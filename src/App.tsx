@@ -1,0 +1,3238 @@
+import { useState, useEffect } from 'react';
+import WebApp from '@twa-dev/sdk';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Home as HomeIcon, 
+  Wallet, 
+  TrendingUp, 
+  CheckSquare, 
+  User, 
+  ArrowUpCircle, 
+  ArrowDownCircle, 
+  Users, 
+  Mail, 
+  MessageCircle, 
+  Globe, 
+  Bell,
+  Settings,
+  HelpCircle,
+  Download,
+  LogOut,
+  FileText,
+  ScrollText,
+  BookOpen,
+  PieChart,
+  Calendar,
+  ChevronRight,
+  Share2,
+  Plus,
+  Check,
+  X,
+  Phone,
+  Lock,
+  Clock,
+  History,
+  Shield,
+  ShieldAlert,
+  Star,
+  Film,
+  Play,
+  Loader2,
+  RefreshCw,
+  Info,
+  ExternalLink
+} from 'lucide-react';
+import { JOBS, INVESTMENTS, JobLevel, UP_LEVEL_RULES, TASK_RULES, POSITION_RULES } from './constants';
+import { cn } from './lib/utils';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { WithdrawModal } from './components/WithdrawModal';
+import { RechargeModal } from './components/RechargeModal';
+import { SupportCenter } from './components/SupportCenter';
+import { InviteModal } from './components/InviteModal';
+import { TeamModal } from './components/TeamModal';
+import { AccountSettingsModal } from './components/AccountSettingsModal';
+import { WithdrawalHistoryModal } from './components/WithdrawalHistoryModal';
+import { RechargeHistoryModal } from './components/RechargeHistoryModal';
+import { FinancialRecordModal } from './components/FinancialRecordModal';
+import { PersonalInfoModal } from './components/PersonalInfoModal';
+import { AboutUsModal } from './components/AboutUsModal';
+import { SigningModal } from './components/SigningModal';
+import { OnboardingTutorial } from './components/OnboardingTutorial';
+import { LoginPage } from './components/LoginPage';
+import { TRANSLATIONS, Language } from './translations';
+import { auth, db, handleFirestoreError, OperationType, getUserDocId, isUserAdmin, logoutUser } from './lib/firebase';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { doc, onSnapshot, getDoc, setDoc, collection, query } from 'firebase/firestore';
+
+type Page = 'HOME' | 'FUND' | 'INCOME' | 'TASK' | 'PROFILE';
+
+export default function App() {
+  const [activePage, setActivePage] = useState<Page>('HOME');
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [currentJobLevel, setCurrentJobLevel] = useState<JobLevel>(JobLevel.INTERN);
+  const [balance, setBalance] = useState({ income: 0.00, personal: 0.00, workDeposit: 0.00 });
+  const [userStatus, setUserStatus] = useState<string>('active');
+  const [userProfile, setUserProfile] = useState<{ phoneNumber?: string; fullName?: string; email?: string } | null>(null);
+  const [showSupportOnSuspended, setShowSupportOnSuspended] = useState(false);
+  const [investments, setInvestments] = useState<any[]>(() => {
+    const saved = localStorage.getItem('user_investments');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('user_investments', JSON.stringify(investments));
+  }, [investments]);
+
+  // Live reload detection mechanism to sync update immediately for all users
+  useEffect(() => {
+    let initialVersion: string | null = null;
+    let isChecking = false;
+
+    const checkVersion = async () => {
+      if (isChecking) return;
+      isChecking = true;
+      try {
+        const response = await fetch('/api/version');
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.version) {
+            if (!initialVersion) {
+              initialVersion = data.version;
+            } else if (initialVersion !== data.version) {
+              console.log("Earnova App update detected! Automatically reloading to the latest build...", initialVersion, "->", data.version);
+              window.location.reload();
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Version check failed:", err);
+      } finally {
+        isChecking = false;
+      }
+    };
+
+    checkVersion();
+    const interval = setInterval(checkVersion, 8000); // Poll every 8 seconds
+    window.addEventListener('focus', checkVersion);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', checkVersion);
+    };
+  }, []);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [showRechargeModal, setShowRechargeModal] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  const [showTeamModal, setShowTeamModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showWithdrawHistoryModal, setShowWithdrawHistoryModal] = useState(false);
+  const [showRechargeHistoryModal, setShowRechargeHistoryModal] = useState(false);
+  const [showFinancialRecordModal, setShowFinancialRecordModal] = useState(false);
+  const [showPersonalInfoModal, setShowPersonalInfoModal] = useState(false);
+  const [showAboutUsModal, setShowAboutUsModal] = useState(false);
+  const [showSigningModal, setShowSigningModal] = useState<{ level: JobLevel, deposit: number } | null>(null);
+  const [showAccountSettingsModal, setShowAccountSettingsModal] = useState<{ isOpen: boolean, initialView?: 'PASSWORD' | 'EMAIL' | 'PHONE' }>({ isOpen: false });
+  const [prefillAmount, setPrefillAmount] = useState<string | undefined>(undefined);
+  const [currentLang, setCurrentLang] = useState<Language>('EN');
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showAuthSetupNotice, setShowAuthSetupNotice] = useState(false);
+  const [tasksClaimedToday, setTasksClaimedToday] = useState<number>(() => {
+    const saved = localStorage.getItem('tasksCompletedCount');
+    const date = localStorage.getItem('taskCompletionDate');
+    const today = new Date().toDateString();
+    if (date === today) {
+      return saved ? parseInt(saved) : 0;
+    }
+    return 0;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('tasksCompletedCount', tasksClaimedToday.toString());
+    localStorage.setItem('taskCompletionDate', new Date().toDateString());
+  }, [tasksClaimedToday]);
+
+  // Advertising Popups State & Effects
+  const [ads, setAds] = useState<any[]>([]);
+  const [showAdPopup, setShowAdPopup] = useState(false);
+  const [activeAd, setActiveAd] = useState<any>(null);
+  const [adCountdown, setAdCountdown] = useState(3);
+
+  // Synchronize advertisements list from Firestore
+  useEffect(() => {
+    const q = query(collection(db, 'advertisements'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() });
+      });
+      setAds(list);
+    }, (err) => {
+      console.warn("Advertisements stream error:", err);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const triggerAd = (loadedAds?: any[]) => {
+    const activeAds = loadedAds || ads;
+    if (activeAds && activeAds.length > 0) {
+      if (showAdPopup) return; // Already showing, don't overlap
+      const randomIndex = Math.floor(Math.random() * activeAds.length);
+      setActiveAd(activeAds[randomIndex]);
+      setAdCountdown(3);
+      setShowAdPopup(true);
+    }
+  };
+
+  // 3-second automatic fadeout countdown timer
+  useEffect(() => {
+    let timer: any;
+    if (showAdPopup && adCountdown > 0) {
+      timer = setTimeout(() => {
+        setAdCountdown(prev => prev - 1);
+      }, 1000);
+    } else if (showAdPopup && adCountdown === 0) {
+      setShowAdPopup(false);
+      setActiveAd(null);
+    }
+    return () => clearTimeout(timer);
+  }, [showAdPopup, adCountdown]);
+
+  // Trigger ad check when entering HOME tab
+  useEffect(() => {
+    if (activePage === 'HOME' && ads.length > 0 && !showAdPopup && !activeAd) {
+      triggerAd(ads);
+    }
+  }, [ads, activePage]);
+
+  useEffect(() => {
+    // Handle deep links / start params on mount
+    const startParam = WebApp.initDataUnsafe?.start_param;
+    const activePhone = localStorage.getItem('earnova_logged_in_phone');
+
+    if (activePhone) {
+      console.log('Found local phone login session, launching immediately:', activePhone);
+      setCurrentUser({ uid: activePhone, isAnonymous: true, isLocalPhoneUser: true });
+      setIsLoadingAuth(false);
+    } else {
+      console.log('No local phone login session found.');
+    }
+
+    // Auth initialization (ran purely as a secondary background layer)
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      setIsLoadingAuth(false);
+      
+      const currentActivePhone = localStorage.getItem('earnova_logged_in_phone');
+      if (currentActivePhone) {
+        // If they already have a local phone session, we do not override it
+        setCurrentUser({ uid: currentActivePhone, isAnonymous: true, isLocalPhoneUser: true });
+        return;
+      }
+
+      if (!user) {
+        console.log('No Firebase user session, attempting silent anonymous connection token...');
+        signInAnonymously(auth).catch((authErr) => {
+          console.warn("Silent anonymous sign in failed in App.tsx (restricted by configuration):", authErr.message);
+        });
+        return;
+      }
+
+      console.log('Firebase session is active:', user.uid);
+      setCurrentUser(user);
+    });
+
+    if (startParam) {
+      const p = startParam.toUpperCase();
+      if (p === 'RECHARGE') setShowRechargeModal(true);
+      else if (p === 'WITHDRAW') setShowWithdrawModal(true);
+      else if (p === 'SUPPORT') setShowSupportModal(true);
+      else if (['HOME', 'FUND', 'INCOME', 'TASK', 'PROFILE'].includes(p)) {
+        setActivePage(p as Page);
+      }
+    }
+
+    const onboardingDone = localStorage.getItem('earnova_onboarding_completed');
+    if (!onboardingDone) {
+      setShowOnboarding(true);
+    }
+
+    return () => {
+      unsubAuth();
+    };
+  }, []);
+
+  useEffect(() => {
+    let unsubUser: (() => void) | null = null;
+    const userDocId = getUserDocId();
+
+    if (userDocId) {
+      const userRef = doc(db, 'users', userDocId);
+      getDoc(userRef).then((snap) => {
+        if (!snap.exists()) {
+          setDoc(userRef, {
+            personal: 0.00, // Onboarding welcome bonus claimed via tutorial screen
+            income: 0.00,
+            workDeposit: 0.00,
+            status: 'active',
+            currentLevel: JobLevel.INTERN,
+            phoneNumber: userDocId
+          }, { merge: true });
+        }
+      }).catch((docErr) => {
+        console.warn("User document default init issue (ignored):", docErr);
+      });
+
+      unsubUser = onSnapshot(userRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setUserProfile({
+            phoneNumber: data.phoneNumber || userDocId,
+            fullName: data.fullName || '',
+            email: data.email || ''
+          });
+          if (data.personal !== undefined || data.income !== undefined || data.workDeposit !== undefined) {
+            setBalance({
+              personal: data.personal || 0,
+              income: data.income || 0,
+              workDeposit: data.workDeposit || 0
+            });
+          }
+          if (data.currentLevel) {
+            setCurrentJobLevel(data.currentLevel as JobLevel);
+          }
+          if (data.investments) {
+            setInvestments(data.investments);
+          }
+          if (data.status) {
+            setUserStatus(data.status);
+          }
+        } else {
+          setUserProfile({
+            phoneNumber: userDocId,
+            fullName: '',
+            email: ''
+          });
+        }
+      }, (err) => {
+        console.warn("User state snapshot hook warning (handled):", err);
+      });
+    } else {
+      setUserProfile(null);
+      setBalance({ income: 0.00, personal: 0.00, workDeposit: 0.00 });
+      setCurrentJobLevel(JobLevel.INTERN);
+      setUserStatus('active');
+    }
+
+    return () => {
+      if (unsubUser) {
+        unsubUser();
+      }
+    };
+  }, [currentUser]);
+
+  useEffect(() => {
+    // Initialize WebApp
+    WebApp.ready();
+    WebApp.expand();
+    
+    // Set colors statically to preserve Earnova Brand theme and ignore dynamic Telegram themes
+    try {
+      WebApp.setHeaderColor('#ffffff');
+      WebApp.setBackgroundColor('#f9fafb');
+    } catch (err) {
+      console.error("Error setting Telegram webapp header colors:", err);
+    }
+    
+    // Handle back button visibility & logic
+    const isAnyModalOpen = showWithdrawModal || showRechargeModal || showSupportModal;
+    
+    const handleBack = () => {
+      if (showWithdrawModal) setShowWithdrawModal(false);
+      else if (showRechargeModal) {
+        setShowRechargeModal(false);
+        setPrefillAmount(undefined);
+      }
+      else if (showSupportModal) setShowSupportModal(false);
+      else setActivePage('HOME');
+    };
+
+    if (activePage === 'HOME' && !isAnyModalOpen) {
+      WebApp.BackButton.hide();
+    } else {
+      WebApp.BackButton.show();
+      WebApp.BackButton.onClick(handleBack);
+      return () => {
+        WebApp.BackButton.offClick(handleBack);
+      };
+    }
+  }, [activePage, showWithdrawModal, showRechargeModal, showSupportModal]);
+
+  const t = (key: keyof typeof TRANSLATIONS['EN']) => TRANSLATIONS[currentLang][key] || TRANSLATIONS['EN'][key] || key;
+
+  const showNotification = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
+    setNotification({ message, type });
+    if (type === 'success') WebApp.HapticFeedback.notificationOccurred('success');
+    if (type === 'error') WebApp.HapticFeedback.notificationOccurred('error');
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleAction = (action: string) => {
+    WebApp.HapticFeedback.impactOccurred('light');
+    if (action === 'Tutorial' || action === 'Take Onboarding Tour' || action === 'Onboarding tour' || action === 'Onboarding Tour') {
+      setShowOnboarding(true);
+      return;
+    }
+    if (action === 'RECHARGE') {
+      setPrefillAmount(undefined);
+      setShowRechargeModal(true);
+      return;
+    }
+    if (action === 'WITHDRAW') {
+      setShowWithdrawModal(true);
+      return;
+    }
+    if (action === 'TEAM') {
+      setShowTeamModal(true);
+      return;
+    }
+    if (action === 'INVITATION' || action === 'INVITE' || action === 'Share EARNOVA') {
+      setShowInviteModal(true);
+      return;
+    }
+    if (action === 'Withdrawal History' || action === 'Financial record' || action === 'Financial Record' || action === t('financial_record')) {
+      setShowFinancialRecordModal(true);
+      return;
+    }
+    if (action === 'Personal information') {
+      setShowPersonalInfoModal(true);
+      return;
+    }
+    if (action === 'About us') {
+      setShowAboutUsModal(true);
+      return;
+    }
+    if (action === 'Recharge History' || action === 'Daily statement') {
+      setShowRechargeHistoryModal(true);
+      return;
+    }
+    if (action === 'Profile') {
+      setActivePage('PROFILE');
+      return;
+    }
+    if (action === 'SUPPORT_CENTER' || action === 'TELEGRAM' || action === 'Support' || action === 'About us' || action === 'Help' || action === t('support_center') || action === 'Support Messages') {
+      setShowSupportModal(true);
+      return;
+    }
+    if (action === 'Settings' || action === 'Account Settings') {
+      setShowAccountSettingsModal({ isOpen: true });
+      return;
+    }
+    if (action === 'Change Password') {
+      setShowAccountSettingsModal({ isOpen: true, initialView: 'PASSWORD' });
+      return;
+    }
+    if (action === 'Update Email') {
+      setShowAccountSettingsModal({ isOpen: true, initialView: 'EMAIL' });
+      return;
+    }
+    if (action === 'Update Phone') {
+      setShowAccountSettingsModal({ isOpen: true, initialView: 'PHONE' });
+      return;
+    }
+    if (action === 'Logout') {
+      logoutUser();
+      localStorage.removeItem('earnova_logged_in_phone');
+      localStorage.removeItem('admin_console_activated');
+      auth.signOut();
+      setCurrentUser(null);
+      setUserStatus('active');
+      setBalance({ income: 0.00, personal: 0.00, workDeposit: 0.00 });
+      setCurrentJobLevel(JobLevel.INTERN);
+      setActivePage('HOME' as Page);
+      WebApp.HapticFeedback.notificationOccurred('success');
+      setTimeout(() => {
+        window.location.reload();
+      }, 300);
+      return;
+    }
+    showNotification(`Action: ${action} processed successfully!`);
+  };
+
+  const handleWithdraw = async (amount: number, wallet: 'INCOME' | 'PERSONAL', details: any, keepOpen?: boolean) => {
+    WebApp.HapticFeedback.notificationOccurred('success');
+    
+    // Save to Firestore if user is logged in
+    if (getUserDocId()) {
+      try {
+        const { collection, addDoc, serverTimestamp, updateDoc, doc, increment } = await import('firebase/firestore');
+        const { db } = await import('./lib/firebase');
+        await addDoc(collection(db, 'withdrawals'), {
+          amount,
+          status: 'pending',
+          timestamp: serverTimestamp(),
+          userId: getUserDocId(),
+          method: details.bankName || 'Unknown',
+          wallet: wallet
+        });
+
+        // Deduct from Firestore User Document to keep database synchronized
+        await updateDoc(doc(db, 'users', getUserDocId()), {
+          [wallet.toLowerCase()]: increment(-amount)
+        });
+      } catch (error) {
+        console.error("Error saving withdrawal:", error);
+      }
+    }
+
+    if (wallet === 'INCOME') {
+      setBalance(prev => ({ ...prev, income: prev.income - amount }));
+    } else {
+      setBalance(prev => ({ ...prev, personal: prev.personal - amount }));
+    }
+    if (!keepOpen) {
+      setShowWithdrawModal(false);
+    }
+    showNotification(`Withdrawal of ETB ${amount} from ${wallet} initiated!`, 'success');
+  };
+
+  const handleClaimOnboardingBonus = async () => {
+    const isClaimedLocal = localStorage.getItem('earnova_onboarding_bonus_claimed');
+    if (isClaimedLocal === 'true') {
+      console.log('Onboarding tutorial bonus already claimed locally');
+      return;
+    }
+
+    try {
+      const { doc, getDoc, updateDoc, increment } = await import('firebase/firestore');
+      const userRef = doc(db, 'users', getUserDocId());
+      const snap = await getDoc(userRef);
+      
+      let alreadyClaimed = false;
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.onboardingClaimed) {
+          alreadyClaimed = true;
+        }
+      }
+
+      if (alreadyClaimed) {
+        localStorage.setItem('earnova_onboarding_bonus_claimed', 'true');
+        console.log('Onboarding tutorial bonus already claimed in Firestore');
+        return;
+      }
+
+      // Add to local state
+      setBalance(prev => ({ ...prev, personal: prev.personal + 100.00 }));
+
+      // Add to Firestore
+      await updateDoc(userRef, {
+        personal: increment(100.00),
+        onboardingClaimed: true
+      });
+
+      localStorage.setItem('earnova_onboarding_bonus_claimed', 'true');
+      showNotification(
+        currentLang === 'AM' 
+          ? 'እንኳን ደስ አላችሁ! የ 100 ETB የጉብኝት ማጠናቀቂያ ቦነስ በግል ቦርሳዎ ውስጥ በስኬት ተቀምጧል።' 
+          : 'Congratulations! Onboarding tutorial bonus of 100 ETB has been added to your Personal Wallet!', 
+        'success'
+      );
+    } catch (err) {
+      console.error("Error claiming onboarding tutorial bonus:", err);
+      setBalance(prev => ({ ...prev, personal: prev.personal + 100.00 }));
+      localStorage.setItem('earnova_onboarding_bonus_claimed', 'true');
+    }
+  };
+
+  const handleRecharge = (amount: number) => {
+    WebApp.HapticFeedback.notificationOccurred('success');
+    // Balance update is now handled via admin approval later
+    setShowRechargeModal(false);
+    showNotification(`Recharge request of ETB ${amount} submitted for approval!`, 'success');
+  };
+
+  const handleJoinJob = (level: JobLevel, deposit: number) => {
+    WebApp.HapticFeedback.impactOccurred('medium');
+    
+    // Prevent downgrades and joining current level
+    const currentIdx = JOBS.findIndex(j => j.level === currentJobLevel);
+    const targetIdx = JOBS.findIndex(j => j.level === level);
+
+    if (targetIdx < currentIdx) {
+      showNotification("You cannot downgrade your job level. Access is restricted to active or upgrade levels.", "error");
+      return;
+    }
+    if (targetIdx === currentIdx) {
+      showNotification("This is already your active job level.", "info");
+      return;
+    }
+
+    if (balance.personal < deposit) {
+      showNotification(`Insufficient balance. Redirecting to recharge ${level}...`, 'info');
+      setPrefillAmount(deposit.toString());
+      setShowRechargeModal(true);
+      return;
+    }
+    
+    // Show signing modal instead of direct activation
+    setShowSigningModal({ level, deposit });
+  };
+
+  const handleFinalSign = async () => {
+    if (!showSigningModal) return;
+    const { level, deposit } = showSigningModal;
+
+    const getLevelSignupBonus = (lvl: JobLevel): number => {
+      switch (lvl) {
+        case JobLevel.JOB1: return 250;
+        case JobLevel.JOB2: return 500;
+        case JobLevel.JOB3: return 1000;
+        case JobLevel.JOB4: return 1500;
+        case JobLevel.JOB5: return 2000;
+        case JobLevel.JOB6: return 2500;
+        case JobLevel.JOB7: return 3000;
+        case JobLevel.JOB8: return 3500;
+        case JobLevel.JOB9: return 4000;
+        case JobLevel.JOB10: return 4500;
+        default: return 0;
+      }
+    };
+
+    const levelBonus = getLevelSignupBonus(level);
+
+    try {
+      // Find the previous level's deposit to refund
+      const prevJob = JOBS.find(j => j.level === currentJobLevel);
+      const prevDeposit = prevJob ? prevJob.deposit : 0;
+
+      // Deduct new deposit, refund previous deposit, and add signup bonus to income
+      setBalance(prev => ({
+        ...prev,
+        personal: Math.max(0, prev.personal - deposit + prevDeposit),
+        income: prev.income + levelBonus,
+        workDeposit: Math.max(0, prev.workDeposit + deposit - prevDeposit)
+      }));
+      setCurrentJobLevel(level);
+
+      // Update Firestore if logged in
+      if (getUserDocId()) {
+        const { updateDoc, doc, increment } = await import('firebase/firestore');
+        await updateDoc(doc(db, 'users', getUserDocId()), {
+          personal: increment(-deposit + prevDeposit),
+          income: increment(levelBonus),
+          workDeposit: increment(deposit - prevDeposit),
+          currentLevel: level
+        });
+      }
+
+      setShowSigningModal(null);
+      if (levelBonus > 0) {
+        showNotification(
+          currentLang === 'AM'
+            ? `በስኬት ተንቀሳቅሷል ${level}! የ ${levelBonus} ETB የደረጃ ጉርሻ በደስታ በገቢ ቦርሳዎ ውስጥ አግኝተዋል። የቀድሞ የተቀማጭ ገንዘብ ETB ${prevDeposit} ወደ የግል ቦርሳ ተመላሽ ተደርጓል።`
+            : `Successfully activated ${level}! You received an instant signing bonus of ETB ${levelBonus} (added to your Income Wallet)! Previous deposit of ETB ${prevDeposit} returned to Personal Wallet.`,
+          'success'
+        );
+      } else {
+        showNotification(`Successfully activated ${level}! Previous deposit of ETB ${prevDeposit} returned to Personal Wallet.`, 'success');
+      }
+    } catch (e) {
+      console.error("Signing error:", e);
+      showNotification("Error completing activation", "error");
+    }
+  };
+
+  const handleInvest = async (name: string, mAmount: number) => {
+    WebApp.HapticFeedback.impactOccurred('medium');
+    if (balance.personal < mAmount) {
+      showNotification(`Insufficient balance in personal wallet to invest!`, 'error');
+      return;
+    }
+
+    try {
+      const selectedFund = INVESTMENTS.find(inv => inv.name === name);
+      const term = selectedFund?.term || 7;
+      const dailyProfit = selectedFund?.dailyProfit || 1.5;
+
+      const newInvest = {
+        id: Math.random().toString(36).substring(7).toUpperCase(),
+        name: name,
+        amount: mAmount,
+        dailyProfit: dailyProfit,
+        term: term,
+        startDate: new Date().toISOString().split('T')[0],
+        status: 'active'
+      };
+
+      const updatedInvestments = [...investments, newInvest];
+
+      // Update Local state
+      setInvestments(updatedInvestments);
+      setBalance(prev => ({
+        ...prev,
+        personal: Math.max(0, prev.personal - mAmount)
+      }));
+
+      // Update Firestore
+      if (getUserDocId()) {
+        const { updateDoc, doc, increment } = await import('firebase/firestore');
+        await updateDoc(doc(db, 'users', getUserDocId()), {
+          personal: increment(-mAmount),
+          investments: updatedInvestments
+        });
+      }
+
+      showNotification(`Successfully invested ETB ${mAmount.toLocaleString()} in ${name}!`, 'success');
+    } catch (e) {
+      console.error(e);
+      showNotification("Error completing investment", "error");
+    }
+  };
+
+  const handleTaskAction = async (title: string, commission: number, taskId?: string) => {
+    WebApp.HapticFeedback.notificationOccurred('success');
+    showNotification(`${t('mission_claimed_msg')}! +ETB ${commission}`, 'success');
+    setBalance(prev => ({ ...prev, income: prev.income + commission }));
+    setTasksClaimedToday(prev => prev + 1);
+
+    const activeUserId = getUserDocId();
+    if (activeUserId) {
+      try {
+        const { updateDoc, arrayUnion, increment } = await import('firebase/firestore');
+        const userRef = doc(db, 'users', activeUserId);
+        
+        const updatePayload: any = {
+          income: increment(commission)
+        };
+        
+        if (taskId) {
+          updatePayload.completedTaskIds = arrayUnion(taskId);
+        }
+        
+        await updateDoc(userRef, updatePayload);
+        
+        // Also save to global local storage as a fallback
+        if (taskId) {
+          const localHistKey = `earnova_historical_claimed_${activeUserId}`;
+          let savedHist: string[] = [];
+          try {
+            const savedHistStr = localStorage.getItem(localHistKey);
+            if (savedHistStr) savedHist = JSON.parse(savedHistStr);
+          } catch {}
+          if (!savedHist.includes(taskId)) {
+            localStorage.setItem(localHistKey, JSON.stringify([...savedHist, taskId]));
+          }
+        }
+      } catch (err) {
+        console.error("Error storing task progress to Firestore:", err);
+      }
+    }
+  };
+
+  const handleNavClick = (page: Page) => {
+    WebApp.HapticFeedback.impactOccurred('light');
+    setActivePage(page);
+    if (page === 'HOME') {
+      triggerAd();
+    }
+  };
+
+  const renderPage = () => {
+    switch (activePage) {
+      case 'HOME':
+        return <HomePage currentJobLevel={currentJobLevel} onJoinJob={handleJoinJob} handleAction={handleAction} t={t} />;
+      case 'FUND':
+        return <FundPage balance={balance} investments={investments} onInvest={handleInvest} handleAction={handleAction} t={t} />;
+      case 'INCOME':
+        return <IncomePage t={t} currentLang={currentLang} />;
+      case 'TASK':
+        return <TaskPage currentLevel={currentJobLevel} onTaskAction={handleTaskAction} tasksClaimedToday={tasksClaimedToday} currentUser={auth.currentUser} t={t} currentLang={currentLang} />;
+      case 'PROFILE':
+        return (
+          <ProfilePage 
+            balance={balance} 
+            currentJobLevel={currentJobLevel} 
+            handleAction={handleAction} 
+            t={t} 
+            userPhone={userProfile?.phoneNumber || localStorage.getItem('earnova_logged_in_phone') || ''}
+            fullName={userProfile?.fullName || 'Member'}
+          />
+        );
+      default:
+        return <HomePage currentJobLevel={currentJobLevel} onJoinJob={handleJoinJob} handleAction={handleAction} t={t} />;
+    }
+  };
+
+  if (isLoadingAuth) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-gray-50 select-none">
+        <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+        <p className="mt-4 text-[10px] font-black uppercase tracking-widest text-gray-400">CONNECTING TO SECURE VAULT...</p>
+      </div>
+    );
+  }
+
+  const isLocalStorageLoggedIn = !!localStorage.getItem('earnova_logged_in_phone');
+
+  if (!currentUser || !isLocalStorageLoggedIn) {
+    return (
+      <LoginPage 
+        currentLang={currentLang}
+        setCurrentLang={setCurrentLang}
+        t={t}
+        onLoginSuccess={() => {
+          // Trigger forced state refresh so the main screens are displayed immediately using local storage identity
+          const activePhone = localStorage.getItem('earnova_logged_in_phone');
+          setCurrentUser({ uid: activePhone, isAnonymous: true, isLocalPhoneUser: true });
+        }}
+      />
+    );
+  }
+
+  if (userStatus === 'inactive') {
+    return (
+      <div className="flex flex-col items-center justify-center p-6 h-screen bg-neutral-950 text-white select-none">
+        {showSupportOnSuspended ? (
+          <div className="fixed inset-0 z-50 bg-[#0A0F1E] text-white">
+            <div className="h-full flex flex-col">
+              <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-widest text-amber-500">Live Compliance Help</span>
+                <button 
+                  onClick={() => setShowSupportOnSuspended(false)}
+                  className="p-2 hover:bg-white/5 rounded-full"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <SupportCenter isOpen={showSupportOnSuspended} onClose={() => setShowSupportOnSuspended(false)} t={t} />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center text-center max-w-sm">
+            <div className="w-16 h-16 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center justify-center text-rose-500 mb-6 animate-pulse">
+              <ShieldAlert size={32} />
+            </div>
+            <h2 className="text-xl font-black italic tracking-tighter uppercase text-white mb-2">Account Restricted</h2>
+            <p className="text-[10px] font-black text-rose-400 uppercase tracking-[0.2em] mb-4">COMPLIANCE REVIEW UNDERWAY</p>
+            <p className="text-xs text-neutral-400 leading-relaxed mb-8">
+              {currentLang === 'AM' 
+                ? 'ይህ አካውንት በህግና ደንብ መጣስ ምክንያት ለጊዜው ታግዷል። እባክዎን ማብራሪያ ለማግኘት የደንበኞች አገልግሎትን ያነጋግሩ።' 
+                : 'Your EarNova account has been temporarily locked or suspended due to a compliance verification review. Please contact support immediately to help restore access.'}
+            </p>
+            <div className="flex flex-col gap-3 w-full max-w-xs">
+              <button
+                onClick={() => {
+                  setShowSupportOnSuspended(true);
+                  WebApp.HapticFeedback.impactOccurred('medium');
+                }}
+                className="w-full py-4 bg-rose-500 text-white rounded-2xl font-black uppercase text-xs tracking-widest active:scale-95 transition-all text-center font-bold"
+              >
+                Contact Support
+              </button>
+              <button
+                onClick={() => {
+                  logoutUser();
+                  auth.signOut();
+                  setCurrentUser(null);
+                  localStorage.removeItem('earnova_logged_in_phone');
+                  setUserStatus('active');
+                  WebApp.HapticFeedback.impactOccurred('light');
+                }}
+                className="w-full py-4 bg-white/5 border border-white/10 text-neutral-400 rounded-2xl font-black uppercase text-xs tracking-widest active:scale-95 transition-all text-center"
+              >
+                Switch Account
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-screen h-[100dvh] bg-[#f9fafb] text-[#111827] font-sans overflow-hidden">
+      <Header onAction={handleAction} currentLang={currentLang} setCurrentLang={setCurrentLang} t={t} />
+      
+      {/* Global Notification */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div 
+            key="global-notification"
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className={cn(
+              "fixed top-20 left-4 right-4 z-[100] p-4 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md",
+              notification.type === 'success' ? "bg-emerald-500/90 text-white border-emerald-400" : 
+              notification.type === 'error' ? "bg-rose-500/90 text-white border-rose-400" :
+              "bg-blue-600/90 text-white border-blue-400"
+            )}
+          >
+            {notification.type === 'success' ? <CheckSquare size={20} /> : notification.type === 'error' ? <Bell size={20} /> : <MessageCircle size={20} />}
+            <p className="text-xs font-black uppercase tracking-tight">{notification.message}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <main className="flex-1 overflow-y-auto relative">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={`page-container-${activePage}`}
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -10 }}
+            transition={{ duration: 0.2 }}
+            className="min-h-full"
+          >
+            {renderPage()}
+          </motion.div>
+        </AnimatePresence>
+      </main>
+      <BottomNav activePage={activePage} setActivePage={handleNavClick} t={t} />
+
+      <AnimatePresence>
+        {showWithdrawModal && (
+          <motion.div key="withdraw-modal-wrapper" className="contents">
+            <WithdrawModal 
+              incomeBalance={balance.income}
+              personalBalance={balance.personal} 
+              onClose={() => setShowWithdrawModal(false)} 
+              onWithdraw={handleWithdraw} 
+              t={t}
+              currentLang={currentLang}
+            />
+          </motion.div>
+        )}
+        {showRechargeModal && (
+          <motion.div key="recharge-modal-wrapper" className="contents">
+            <RechargeModal 
+              onClose={() => {
+                setShowRechargeModal(false);
+                setPrefillAmount(undefined);
+              }} 
+              onRecharge={handleRecharge} 
+              initialAmount={prefillAmount}
+              t={t}
+            />
+          </motion.div>
+        )}
+        {showSupportModal && (
+          <motion.div key="support-modal-wrapper" className="contents">
+            <SupportCenter 
+              isOpen={showSupportModal} 
+              onClose={() => setShowSupportModal(false)}
+              t={t}
+            />
+          </motion.div>
+        )}
+        {showTeamModal && (
+          <motion.div key="team-modal-wrapper" className="contents">
+            <TeamModal 
+              onClose={() => setShowTeamModal(false)}
+              onInvite={() => setShowInviteModal(true)}
+              t={t}
+            />
+          </motion.div>
+        )}
+        {showInviteModal && (
+          <motion.div key="invite-modal-wrapper" className="contents">
+            <InviteModal 
+              onClose={() => setShowInviteModal(false)}
+              t={t}
+            />
+          </motion.div>
+        )}
+        {showAccountSettingsModal.isOpen && (
+          <motion.div key="account-settings-modal-wrapper" className="contents">
+            <AccountSettingsModal 
+              onClose={() => setShowAccountSettingsModal({ isOpen: false })}
+              t={t}
+              initialView={showAccountSettingsModal.initialView}
+            />
+          </motion.div>
+        )}
+        {showWithdrawHistoryModal && (
+          <motion.div key="withdraw-history-modal-wrapper" className="contents">
+            <WithdrawalHistoryModal 
+              isOpen={showWithdrawHistoryModal}
+              onClose={() => setShowWithdrawHistoryModal(false)}
+              t={t}
+            />
+          </motion.div>
+        )}
+        {showRechargeHistoryModal && (
+          <motion.div key="recharge-history-modal-wrapper" className="contents">
+            <RechargeHistoryModal 
+              isOpen={showRechargeHistoryModal}
+              onClose={() => setShowRechargeHistoryModal(false)}
+              t={t}
+            />
+          </motion.div>
+        )}
+        {showFinancialRecordModal && (
+          <motion.div key="financial-record-modal-wrapper" className="contents">
+            <FinancialRecordModal 
+              isOpen={showFinancialRecordModal}
+              onClose={() => setShowFinancialRecordModal(false)}
+              balance={balance}
+              currentJobLevel={currentJobLevel}
+              t={t}
+            />
+          </motion.div>
+        )}
+        {showPersonalInfoModal && (
+          <motion.div key="personal-info-modal-wrapper" className="contents">
+            <PersonalInfoModal 
+              isOpen={showPersonalInfoModal}
+              onClose={() => setShowPersonalInfoModal(false)}
+              userPhone={userProfile?.phoneNumber || localStorage.getItem('earnova_logged_in_phone') || ''}
+              fullName={userProfile?.fullName || 'Member'}
+              email={userProfile?.email || 'member@earnova.com'}
+            />
+          </motion.div>
+        )}
+        {showAboutUsModal && (
+          <motion.div key="about-us-modal-wrapper" className="contents">
+            <AboutUsModal 
+              isOpen={showAboutUsModal}
+              onClose={() => setShowAboutUsModal(false)}
+            />
+          </motion.div>
+        )}
+        {showSigningModal && (
+          <motion.div key="signing-modal-wrapper" className="contents">
+            <SigningModal 
+              level={showSigningModal.level}
+              deposit={showSigningModal.deposit}
+              onClose={() => setShowSigningModal(null)}
+              onSign={handleFinalSign}
+              t={t}
+            />
+          </motion.div>
+        )}
+        {showOnboarding && (
+          <OnboardingTutorial 
+            currentLang={currentLang}
+            onClose={() => setShowOnboarding(false)}
+            onPageChange={(p) => setActivePage(p as Page)}
+            activePage={activePage}
+            onClaimBonus={handleClaimOnboardingBonus}
+          />
+        )}
+
+        {showAdPopup && activeAd && (
+          <motion.div 
+            key="ad-popup-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              transition={{ type: "spring", duration: 0.45 }}
+              className="relative w-full max-w-sm bg-[#0E1322] border border-white/10 rounded-[32px] overflow-hidden shadow-2xl flex flex-col"
+            >
+              {/* Close Countdown Header */}
+              <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+                <button 
+                  onClick={() => {
+                    setShowAdPopup(false);
+                    setActiveAd(null);
+                    WebApp.HapticFeedback.impactOccurred('light');
+                  }}
+                  className="bg-black/60 hover:bg-black/80 text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10 flex items-center gap-1.5 backdrop-blur-sm shadow-sm active:scale-95 transition-all cursor-pointer"
+                >
+                  <span className="text-gray-400">Skip</span>
+                  <span className="bg-amber-500 text-[#0A0F1E] text-[9.5px] w-4.5 h-4.5 rounded-full flex items-center justify-center font-black">
+                    {adCountdown}s
+                  </span>
+                </button>
+              </div>
+
+              {/* Banner Area */}
+              <div className="relative aspect-[3/4] w-full bg-[#070A13] flex items-center justify-center overflow-hidden">
+                <img 
+                  src={activeAd.imageUrl} 
+                  alt="Advertisement Banner" 
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover select-none pointer-events-none"
+                />
+                
+                {/* Subtle base gradient */}
+                <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-[#0E1322] via-[#0E1322]/40 to-transparent pointer-events-none" />
+              </div>
+
+              {/* Action and Close controls */}
+              <div className="p-6 bg-[#0E1322] space-y-4 text-center">
+                <div>
+                  <h4 className="text-[9px] font-black text-amber-500 uppercase tracking-[0.2em] mb-1 leading-none">Official Partner</h4>
+                  <p className="text-xs font-black text-gray-400 uppercase tracking-tight italic">Ecosystem Sponsored Announcement</p>
+                </div>
+
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => {
+                      setShowAdPopup(false);
+                      setActiveAd(null);
+                      WebApp.HapticFeedback.impactOccurred('light');
+                    }}
+                    className="flex-1 py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 cursor-pointer font-sans"
+                  >
+                    Cancel / Skip
+                  </button>
+                  
+                  <a 
+                    href={activeAd.imageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => {
+                      setShowAdPopup(false);
+                      setActiveAd(null);
+                      WebApp.HapticFeedback.impactOccurred('light');
+                    }}
+                    className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-400 text-[#0A0F1E] font-black rounded-2xl text-[9px] uppercase tracking-widest transition-all text-center flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/10"
+                  >
+                    Details <ExternalLink size={10} />
+                  </a>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function Header({ onAction, currentLang, setCurrentLang, t }: { onAction: (a: string) => void, currentLang: Language, setCurrentLang: (l: Language) => void, t: any }) {
+  const [showLangs, setShowLangs] = useState(false);
+  const langs: { id: Language; label: string }[] = [
+    { id: 'EN', label: 'English' },
+    { id: 'AM', label: 'አማርኛ' },
+    { id: 'OR', label: 'Afaan Oromoo' },
+    { id: 'SO', label: 'Af-Soomaali' },
+  ];
+
+  return (
+    <header className="flex-shrink-0 z-[60] bg-white px-4 py-3 flex items-center justify-between shadow-sm">
+      <div className="flex items-center gap-2">
+        <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">
+          E
+        </div>
+        <span className="text-blue-600 font-black italic text-2xl tracking-tighter">EARNOVA</span>
+      </div>
+      <div className="flex items-center gap-3 relative">
+        <button 
+          onClick={() => onAction('Tutorial')} 
+          className="p-2 bg-amber-50 rounded-full text-amber-500 hover:bg-amber-100 active:scale-90 transition-transform border border-amber-100 flex items-center justify-center relative group"
+          title="Onboarding Tour"
+        >
+          <HelpCircle size={20} className="stroke-[2.5]" />
+          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+          </span>
+        </button>
+        <button onClick={() => onAction('Profile')} className="p-2 bg-blue-50 rounded-full text-blue-600 active:scale-90 transition-transform">
+          <User size={20} />
+        </button>
+        <button 
+          onClick={() => setShowLangs(!showLangs)} 
+          className="flex items-center gap-1 text-blue-600 font-medium px-3 py-1 bg-blue-50 rounded-full text-sm active:scale-95 transition-transform"
+        >
+          <Globe size={16} />
+          {langs.find(l => l.id === currentLang)?.label.split(' ')[0]}
+        </button>
+
+        <AnimatePresence>
+          {showLangs && (
+            <motion.div key="lang-selector-group">
+              <motion.div 
+                key="lang-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowLangs(false)}
+                className="fixed inset-0 z-[-1]" 
+              />
+              <motion.div 
+                key="lang-dropdown"
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className="absolute top-full right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 p-2 min-w-[140px] z-[70]"
+              >
+                {langs.map((l) => (
+                  <button
+                    key={`lang-item-${l.id}`}
+                    onClick={() => {
+                      setCurrentLang(l.id);
+                      setShowLangs(false);
+                    }}
+                    className={cn(
+                      "w-full text-left px-4 py-2 rounded-xl text-xs font-black uppercase tracking-tight transition-colors",
+                      currentLang === l.id ? "bg-blue-600 text-white" : "hover:bg-blue-50 text-gray-700"
+                    )}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </header>
+  );
+}
+
+function BottomNav({ activePage, setActivePage, t }: { activePage: Page, setActivePage: (p: Page) => void, t: any }) {
+  const navItems: { id: Page; label: string; icon: typeof HomeIcon }[] = [
+    { id: 'HOME', label: t('nav_home'), icon: HomeIcon },
+    { id: 'FUND', label: t('nav_fund'), icon: Wallet },
+    { id: 'INCOME', label: t('nav_income'), icon: TrendingUp },
+    { id: 'TASK', label: t('nav_mission'), icon: CheckSquare },
+    { id: 'PROFILE', label: t('nav_profile'), icon: User },
+  ];
+
+  return (
+    <nav className="flex-shrink-0 bg-white border-t border-gray-100 flex items-center justify-around py-2 px-1 z-50">
+      {navItems.map((item) => {
+        const isActive = activePage === item.id;
+        return (
+          <button
+            key={`nav-${item.id}`}
+            id={`nav-${item.id}`}
+            onClick={() => setActivePage(item.id)}
+            className={cn(
+              "flex flex-col items-center gap-1 min-w-16 transition-colors duration-200",
+              isActive ? "text-blue-600" : "text-gray-400"
+            )}
+          >
+            <item.icon size={22} strokeWidth={isActive ? 2.5 : 2} />
+            <span className="text-[10px] font-bold tracking-wider">{item.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function BannerCarousel({ t }: { t: any }) {
+  const slogans = [
+    { 
+      text: t('home_slogan1'), 
+      image: "https://images.unsplash.com/photo-1639322537228-f710d846310a?q=80&w=1000&auto=format&fit=crop"
+    },
+    { 
+      text: t('home_slogan2'), 
+      image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=1000&auto=format&fit=crop"
+    },
+    { 
+      text: t('home_slogan3'), 
+      image: "https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?q=80&w=1000&auto=format&fit=crop"
+    },
+    { 
+      text: t('home_slogan4'), 
+      image: "https://images.unsplash.com/photo-1512438248247-f0f2a5a8b7f0?q=80&w=1000&auto=format&fit=crop"
+    },
+  ];
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % slogans.length);
+    }, 4500);
+    return () => clearInterval(timer);
+  }, [slogans.length]);
+
+  return (
+    <div className="relative h-48 rounded-3xl overflow-hidden mt-2 shadow-2xl shadow-blue-100/50 group">
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={`banner-slide-${currentIndex}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 1 }}
+          className="absolute inset-0"
+        >
+          {/* Background Image with slow zoom */}
+          <motion.div 
+            initial={{ scale: 1.15 }}
+            animate={{ scale: 1.05 }}
+            transition={{ duration: 6, ease: "linear" }}
+            className="absolute inset-0 bg-cover bg-center"
+            style={{ backgroundImage: `url(${slogans[currentIndex].image})` }}
+          />
+          
+          {/* Unified Premium Dark Overlay */}
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+
+          {/* Animated Decorative Background Elements */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <motion.div
+              animate={{
+                x: [0, 50, -20],
+                y: [0, -30, 40],
+              }}
+              transition={{
+                duration: 15,
+                repeat: Infinity,
+                ease: "linear"
+              }}
+              className="absolute -top-10 -right-10 w-40 h-40 bg-blue-500/20 rounded-full blur-[80px]"
+            />
+            <motion.div
+              animate={{
+                x: [0, -40, 30],
+                y: [0, 50, -20],
+              }}
+              transition={{
+                duration: 20,
+                repeat: Infinity,
+                ease: "linear"
+              }}
+              className="absolute -bottom-20 -left-10 w-56 h-56 bg-indigo-500/10 rounded-full blur-[100px]"
+            />
+          </div>
+
+          <div className="relative z-10 h-full p-8 flex flex-col justify-end pb-10">
+            <motion.div 
+              key={`banner-text-content-${currentIndex}`}
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="space-y-2"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <div className="h-[1px] w-4 bg-blue-400" />
+                <span className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em]">{t('official_partner')}</span>
+              </div>
+              <h1 className="text-xl font-black text-white leading-tight uppercase tracking-tight">
+                {slogans[currentIndex].text.split(' – ')[0]}
+              </h1>
+              <p className="text-white/80 text-sm font-medium italic tracking-wide">
+                {slogans[currentIndex].text.split(' – ')[1]}
+              </p>
+            </motion.div>
+          </div>
+        </motion.div>
+      </AnimatePresence>
+      
+      {/* Premium Indicators */}
+      <div className="absolute bottom-6 right-8 flex gap-2 z-20">
+        {slogans.map((_, i) => (
+          <div 
+            key={`slogan-dot-${i}`} 
+            className={cn(
+              "h-[2px] transition-all duration-700 rounded-full",
+              i === currentIndex ? "w-8 bg-blue-500" : "w-2 bg-white/20"
+            )} 
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HomePage({ currentJobLevel, onJoinJob, handleAction, t }: { currentJobLevel: JobLevel, onJoinJob: (l: JobLevel, d: number) => void, handleAction: (a: string) => void, t: any }) {
+  return (
+    <div className="px-4 space-y-6 pt-4 pb-8">
+      <BannerCarousel t={t} />
+
+      {/* Alert */}
+      <div className="bg-blue-50 rounded-2xl p-3 flex items-center gap-3 border border-blue-100 cursor-pointer" onClick={() => handleAction('Announcement')}>
+        <div className="text-blue-600">
+          <Bell size={20} />
+        </div>
+        <div className="flex-1 overflow-hidden whitespace-nowrap">
+          <p className="text-blue-900 text-xs font-medium animate-marquee">
+            {t('alert_msg')}
+          </p>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-4 gap-2 px-1">
+        {[
+          { label: 'RECHARGE', icon: ArrowUpCircle, color: 'bg-blue-500', tKey: 'btn_recharge' },
+          { label: 'WITHDRAW', icon: ArrowDownCircle, color: 'bg-indigo-500', tKey: 'btn_withdraw' },
+          { label: 'TEAM', icon: Users, color: 'bg-emerald-500', tKey: 'income_team_size' },
+          { label: 'TELEGRAM', icon: MessageCircle, color: 'bg-sky-500', tKey: 'support_center' },
+        ].map((action, idx) => (
+          <button key={`quick-action-${action.label}-${idx}`} onClick={() => handleAction(action.label)} className="flex flex-col items-center gap-1.5 group">
+            <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-lg transform transition-transform group-active:scale-95", action.color)}>
+              <action.icon size={20} />
+            </div>
+            <span className="text-[9px] font-black text-gray-700 tracking-tight text-center leading-none uppercase">{action.tKey ? t(action.tKey as any) : action.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Job Levels */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-black text-gray-900 uppercase">{t('profile_level')}</h2>
+          <button onClick={() => handleAction('View All Jobs')} className="text-blue-600 font-bold text-xs">{t('nav_income')}</button>
+        </div>
+        
+        <div className="space-y-3">
+          {JOBS.map((job) => {
+            const jobIndex = JOBS.findIndex(j => j.level === job.level);
+            const currentIndex = JOBS.findIndex(j => j.level === currentJobLevel);
+            const isPrevious = jobIndex < currentIndex;
+
+            return (
+              <div 
+                key={`home-job-${job.id}`} 
+                className={cn(
+                  "rounded-2xl p-3 relative overflow-hidden shadow-sm border border-black/5 transition-all duration-300", 
+                  isPrevious 
+                    ? "bg-gray-100/80 border-gray-200 opacity-60 saturate-[0.1]" 
+                    : job.bgColor
+                )}
+              >
+                <div className="relative z-10 flex justify-between items-start">
+                  <div className="space-y-2">
+                    <h3 className={cn(
+                      "text-2xl font-black italic uppercase tracking-tighter leading-none animate-pulse-subtle", 
+                      isPrevious ? "text-gray-400" : job.color
+                    )}>
+                      {job.level}
+                    </h3>
+                    <div className="space-y-0.5 text-[10px] font-bold text-gray-500 uppercase tracking-tight">
+                      <p>{t('balance_work')}: <span className={isPrevious ? "text-gray-400 font-medium" : "text-gray-900"}>ETB {job.deposit}</span></p>
+                      <p>{t('daily_tasks')}: <span className={isPrevious ? "text-gray-400 font-medium" : "text-gray-900"}>{job.dailyTasks}</span></p>
+                      <p>{t('each_order')}: <span className={isPrevious ? "text-gray-400 font-medium" : "text-gray-900"}>ETB {job.eachOrder}</span></p>
+                    </div>
+                    {isPrevious ? (
+                      <button 
+                        disabled 
+                        className="mt-1 bg-gray-200 text-gray-400 px-4 py-2 rounded-xl font-black text-[9px] uppercase tracking-wider cursor-not-allowed border border-gray-300/50"
+                      >
+                        {t('btn_inaccessible_unused')}
+                      </button>
+                    ) : currentJobLevel === job.level ? (
+                      <button 
+                        onClick={() => handleAction(`View Job ${job.level}`)} 
+                        className="mt-1 bg-emerald-500 text-white px-6 py-2 rounded-xl font-black text-xs active:scale-95 transition-transform shadow-lg shadow-emerald-100 animate-pulse-subtle"
+                      >
+                        {t('btn_signed')}
+                      </button>
+                    ) : job.deposit > 0 ? (
+                      <button 
+                        onClick={() => onJoinJob(job.level, job.deposit)} 
+                        className="mt-1 bg-gray-900 text-white px-6 py-2 rounded-xl font-black text-xs active:scale-95 transition-transform"
+                      >
+                        {t('btn_claim')}
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => onJoinJob(job.level, job.deposit)} 
+                        className="mt-1 bg-blue-600 text-white px-6 py-2 rounded-xl font-black text-xs active:scale-95 transition-transform"
+                      >
+                        {t('btn_claim')}
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="relative">
+                    <div className="w-14 h-14 bg-black/5 rounded-2xl rotate-45 flex items-center justify-center transform translate-x-4 -translate-y-4">
+                      <span className="text-3xl font-black -rotate-45 text-black/10 tracking-tighter">
+                        {job.id}
+                      </span>
+                    </div>
+                    {!isPrevious && (
+                      <div className="absolute -bottom-1 right-2 w-3 h-3 bg-emerald-400 rotate-45 border-2 border-white shadow-sm" />
+                    )}
+                  </div>
+                </div>
+                {/* Decorative elements */}
+                <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      
+      <div className="pb-8" />
+    </div>
+  );
+}
+
+function FundPage({ balance, investments = [], onInvest, handleAction, t }: { balance: { personal: number, income: number, workDeposit: number }, investments: any[], onInvest: (n: string, m: number) => void, handleAction: (a: string) => void, t: any }) {
+  const [showClosedModal, setShowClosedModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState<any | null>(null);
+  const [investAmount, setInvestAmount] = useState<string>('');
+
+  const selectedAmt = parseFloat(investAmount) || 0;
+  const isSufficient = showConfirmModal ? balance.personal >= selectedAmt : false;
+  const isMinMet = showConfirmModal ? selectedAmt >= showConfirmModal.minDeposit : false;
+  const dailyIncome = showConfirmModal ? selectedAmt * (showConfirmModal.dailyProfit / 100) : 0;
+  const cycleIncome = showConfirmModal ? dailyIncome * showConfirmModal.term : 0;
+  const totalPayout = selectedAmt + cycleIncome;
+
+  const totalActiveFundBalance = investments
+    .filter(inv => inv.status !== 'closed')
+    .reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
+
+  // Pre-loaded/Mock completed records plus any user-defined ones that are closed
+  const defaultClosedRecords = [
+    { id: 'C910283', name: 'Wealth Fund 2', term: 14, amount: 2000, dailyProfit: 3.0, startDate: '2026-05-01', closedDate: '2026-05-15', earnings: 840 },
+    { id: 'C910012', name: 'Wealth Fund 1', term: 7, amount: 1000, dailyProfit: 1.5, startDate: '2026-05-01', closedDate: '2026-05-08', earnings: 105 }
+  ];
+
+  const userClosedRecords = investments.filter(inv => inv.status === 'closed');
+  const allClosedRecords = [...userClosedRecords, ...defaultClosedRecords];
+
+  const handleOpenInvest = (inv: any) => {
+    WebApp.HapticFeedback.impactOccurred('medium');
+    setShowConfirmModal(inv);
+    setInvestAmount(inv.minDeposit.toString());
+  };
+
+  const handleConfirmInvestment = (e: any) => {
+    e.preventDefault();
+    const amount = parseFloat(investAmount);
+    if (isNaN(amount) || amount < showConfirmModal.minDeposit) {
+      WebApp.HapticFeedback.notificationOccurred('error');
+      alert(`Minimum deposit is ETB ${showConfirmModal.minDeposit}`);
+      return;
+    }
+    if (balance.personal < amount) {
+      WebApp.HapticFeedback.notificationOccurred('error');
+      alert(`Insufficient balance. Please recharge your personal wallet!`);
+      return;
+    }
+
+    onInvest(showConfirmModal.name, amount);
+    setShowConfirmModal(null);
+  };
+
+  return (
+    <div className="px-4 space-y-4 pt-4 pb-8 select-none">
+      <div className="flex items-center justify-between mt-2">
+        <h1 className="text-2xl font-black italic text-blue-600 tracking-tighter uppercase">{t('fund_title')}</h1>
+        <button 
+          onClick={() => {
+            WebApp.HapticFeedback.impactOccurred('medium');
+            setShowClosedModal(true);
+          }} 
+          className="p-3 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl active:scale-95 transition-all shadow-sm flex items-center gap-1.5"
+          title="Investment Record History"
+        >
+          <BookOpen size={18} className="animate-pulse" />
+          <span className="text-[10px] font-black uppercase tracking-wider">{t('financial_record')}</span>
+        </button>
+      </div>
+
+      <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-2xl relative overflow-hidden">
+        <div className="relative z-10 space-y-1">
+          <p className="text-blue-100 text-[10px] font-black uppercase tracking-widest">{t('balance_total')} (ETB)</p>
+          <div className="flex items-baseline gap-1">
+            <span className="text-3xl font-black tracking-tight italic">
+              ETB {totalActiveFundBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <p className="text-[9px] text-blue-200/80 font-bold uppercase tracking-wider">
+            Active Investment Capital
+          </p>
+        </div>
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full translate-x-1/2 -translate-y-1/2 blur-2xl" />
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{t('fund_active_investments')}</h2>
+          <span className="flex items-center gap-1 text-[9px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-black uppercase">
+            <div className="w-1 h-1 bg-blue-600 rounded-full animate-pulse" />
+            {t('real_time')}
+          </span>
+        </div>
+
+        {/* Dynamic Display of User's Real Active Investments */}
+        {investments.filter(inv => inv.status !== 'closed').length === 0 ? (
+          <div className="bg-white/50 border border-dashed border-gray-200 rounded-2xl p-8 text-center">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('fund_no_investments')}</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {investments.filter(inv => inv.status !== 'closed').map((inv) => {
+              const expectedIncome = inv.amount * (inv.dailyProfit / 100) * inv.term;
+              return (
+                <div key={inv.id} className="bg-white border-2 border-slate-100 rounded-2xl p-4 shadow-sm space-y-3 relative overflow-hidden">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="text-[8px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded-full">
+                        ACTIVE ID: {inv.id}
+                      </span>
+                      <h4 className="text-lg font-black text-slate-800 tracking-tight mt-1">{inv.name}</h4>
+                    </div>
+                    <span className="text-[10px] font-black text-emerald-500 bg-emerald-50 px-2 py-1 rounded-lg">
+                      +{inv.dailyProfit}% DAILY
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 border-t border-slate-50 pt-3">
+                    <div>
+                      <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Invested</p>
+                      <p className="text-xs font-black text-slate-800">ETB {Number(inv.amount).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Term</p>
+                      <p className="text-xs font-black text-slate-800">{inv.term} Days</p>
+                    </div>
+                    <div>
+                      <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Est. Return</p>
+                      <p className="text-xs font-black text-emerald-600">+ETB {expectedIncome.toLocaleString()}</p>
+                    </div>
+                  </div>
+                  <div className="absolute top-0 right-0 w-12 h-12 bg-blue-50/50 rounded-bl-3xl flex items-center justify-center">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Wealth Fund Title Selector */}
+        <div className="pt-2">
+          <h2 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{t('fund_title')} products</h2>
+        </div>
+
+        {/* Available Investments */}
+        <div className="space-y-3">
+          {INVESTMENTS.map((inv) => (
+            <div key={`fund-inv-${inv.id}`} className={cn("rounded-2xl p-4 text-white shadow-xl relative overflow-hidden", inv.color)}>
+              <div className="relative z-10 flex justify-between items-start">
+                <div className="space-y-2">
+                  <h3 className="text-xl font-black italic uppercase tracking-tighter leading-tight">
+                    {t('nav_fund')} {inv.id}
+                  </h3>
+                  <div className="bg-white/20 backdrop-blur-md px-2 py-0.5 rounded-full text-[9px] font-black uppercase w-fit leading-none">
+                    {inv.term} {t('investment_term')}
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-[9px] font-black uppercase text-blue-100 tracking-widest">{t('investment_min')}</p>
+                    <p className="text-lg font-black italic leading-none">ETB {inv.minDeposit}</p>
+                  </div>
+                  <button 
+                    onClick={() => handleOpenInvest(inv)} 
+                    className="bg-white text-gray-900 px-6 py-2.5 rounded-xl font-black text-xs uppercase active:scale-95 transition-all shadow-md hover:bg-slate-50"
+                  >
+                    {t('btn_invest')}
+                  </button>
+                </div>
+                
+                <div className="text-right space-y-0.5">
+                  <p className="text-2xl font-black italic text-emerald-400">+{inv.dailyProfit}%</p>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-blue-100 leading-none">{t('investment_profit')}</p>
+                </div>
+              </div>
+              
+              <div className="absolute top-1/2 right-0 w-24 h-32 bg-white/5 rounded-2xl -translate-y-1/2 translate-x-1/2 border border-white/10" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="pb-8" />
+
+      {/* CLOSED FUND RECORDS MODAL */}
+      <AnimatePresence>
+        {showClosedModal && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-xs focus:outline-none" onClick={() => setShowClosedModal(false)}>
+            <motion.div 
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="w-full max-w-md bg-white rounded-t-[32px] sm:rounded-3xl overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh]"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="bg-gradient-to-r from-slate-800 to-slate-950 p-6 text-white relative">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-black italic uppercase tracking-tighter">Closed Records</h3>
+                    <p className="text-[9px] font-black tracking-widest uppercase text-slate-400 mt-0.5">Mature & Settled Portfolios</p>
+                  </div>
+                  <button onClick={() => setShowClosedModal(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable List */}
+              <div className="p-5 overflow-y-auto space-y-4 max-h-[60vh] bg-slate-50/50">
+                {allClosedRecords.map((rec) => {
+                  const dailyReward = rec.amount * (rec.dailyProfit / 100);
+                  const totalProfit = dailyReward * rec.term;
+                  const maturityPayout = rec.amount + totalProfit;
+
+                  return (
+                    <div key={rec.id} className="bg-white border-2 border-slate-100 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+                      {/* CLOSED STAMP */}
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 border-4 border-double border-red-500/85 text-red-500/85 font-black text-xs px-3.5 py-1.5 rounded uppercase tracking-widest -rotate-[15deg] bg-white/95 shadow-md select-none pointer-events-none z-20">
+                        CLOSED
+                      </div>
+
+                      <div className="space-y-1.5 opacity-60">
+                        <div className="flex justify-between">
+                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">ID: {rec.id}</span>
+                          <span className="text-[9px] font-black text-slate-400">{rec.closedDate}</span>
+                        </div>
+                        <h4 className="text-base font-black text-slate-800">{rec.name}</h4>
+                        
+                        <div className="grid grid-cols-2 gap-y-2 gap-x-1 border-t border-slate-100 pt-2 text-[11px] font-bold text-slate-500">
+                          <div>
+                            <span className="text-[8px] font-black text-gray-400 block uppercase tracking-wider">Invested Capital</span>
+                            <span className="text-slate-700 font-extrabold">ETB {rec.amount.toLocaleString()}</span>
+                          </div>
+                          <div>
+                            <span className="text-[8px] font-black text-gray-400 block uppercase tracking-wider">Maturity Return</span>
+                            <span className="text-emerald-600 font-extrabold">ETB {maturityPayout.toLocaleString()}</span>
+                          </div>
+                          <div>
+                            <span className="text-[8px] font-black text-gray-400 block uppercase tracking-wider">Daily Interest</span>
+                            <span className="text-slate-700 font-extrabold">+{rec.dailyProfit}%</span>
+                          </div>
+                          <div>
+                            <span className="text-[8px] font-black text-gray-400 block uppercase tracking-wider">Term Cycle</span>
+                            <span className="text-slate-700 font-extrabold">{rec.term} Days</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 border-t border-slate-100 bg-white flex gap-3">
+                <button 
+                  onClick={() => setShowClosedModal(false)}
+                  className="w-full bg-slate-900 text-white font-black uppercase text-xs py-3 rounded-xl transition-all active:scale-[0.98]"
+                >
+                  Close Document
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* INVESTMENT CONFIRM & CUSTOM INPUT MODAL */}
+      <AnimatePresence>
+        {showConfirmModal && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-xs" onClick={() => setShowConfirmModal(null)}>
+            <motion.div 
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="w-full max-w-md bg-white rounded-t-[32px] sm:rounded-3xl overflow-hidden shadow-2xl relative flex flex-col max-h-[92vh]"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white relative flex-shrink-0 animate-fade-in">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-black italic uppercase tracking-tighter">Setup Investment</h3>
+                    <p className="text-[9px] font-black tracking-widest uppercase text-blue-200 mt-0.5">{showConfirmModal.name}</p>
+                  </div>
+                  <button onClick={() => setShowConfirmModal(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-4 overflow-y-auto flex-1 max-h-[52vh]">
+                <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100 flex justify-between items-center">
+                  <div>
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Personal Balance</p>
+                    <p className="text-lg font-black text-slate-800">ETB {balance.personal.toLocaleString()}</p>
+                  </div>
+                  <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-1 rounded-xl font-black uppercase tracking-wider">
+                    Wallet
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Investment Amount (ETB)</label>
+                  <div className="relative">
+                    <input 
+                      type="number"
+                      value={investAmount}
+                      onChange={(e) => setInvestAmount(e.target.value)}
+                      placeholder={`Min: ${showConfirmModal.minDeposit}`}
+                      className="w-full bg-white border-2 border-slate-100 rounded-2xl p-4 text-base font-black text-slate-900 focus:border-blue-600 focus:outline-none transition-colors"
+                      min={showConfirmModal.minDeposit}
+                      required
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">ETB</span>
+                  </div>
+                  <p className="text-[9px] font-bold text-gray-400 block uppercase ml-1">
+                    Minimum required: ETB {showConfirmModal.minDeposit.toLocaleString()}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-2 text-[11px] font-bold text-slate-500">
+                  <div className="flex justify-between">
+                    <span className="uppercase text-[8px] font-black text-gray-400 tracking-wider">Daily Interest</span>
+                    <span className="text-slate-800 font-extrabold">+{showConfirmModal.dailyProfit}% ({t('real_time')})</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="uppercase text-[8px] font-black text-gray-400 tracking-wider">Term Cycle</span>
+                    <span className="text-slate-800 font-extrabold">{showConfirmModal.term} Days</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="uppercase text-[8px] font-black text-gray-400 tracking-wider">Est. Daily Income</span>
+                    <span className="text-emerald-600 font-extrabold">ETB {dailyIncome.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="uppercase text-[8px] font-black text-gray-400 tracking-wider">Total Est. Profit</span>
+                    <span className="text-emerald-600 font-extrabold">ETB {cycleIncome.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-slate-100 pt-2 font-black text-xs">
+                    <span className="uppercase text-[8.5px] font-black text-slate-600 tracking-wider">Payout on Maturity</span>
+                    <span className="text-indigo-600">ETB {totalPayout.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-slate-100 bg-white flex gap-2.5 flex-shrink-0 pb-12 sm:pb-6">
+                <button 
+                  type="button" 
+                  onClick={() => setShowConfirmModal(null)}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-500 py-3.5 rounded-2xl font-black text-xs uppercase active:scale-[0.98] transition-all"
+                >
+                  Exit
+                </button>
+                <button 
+                  type="button"
+                  onClick={handleConfirmInvestment}
+                  disabled={!isSufficient || !isMinMet}
+                  className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-2xl font-black text-xs uppercase shadow-lg shadow-blue-100 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {!isSufficient ? "Insufficient Balance" : !isMinMet ? "Check Minimum Amount" : "Join & Invest"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function IncomePage({ t, currentLang }: { t: any, currentLang: Language }) {
+  const renderJobDesc = (job: any) => {
+    if (job.level === JobLevel.INTERN) {
+      return t('income_intern_desc');
+    }
+    return t('income_job_desc')
+      .replace('{deposit}', job.deposit.toLocaleString())
+      .replace('{tasks}', job.dailyTasks.toString())
+      .replace('{each}', job.eachOrder.toString())
+      .replace('{daily}', (job.dailyTasks * job.eachOrder).toLocaleString())
+      .replace('{monthly}', (job.dailyTasks * job.eachOrder * 30).toLocaleString())
+      .replace('{yearly}', (job.dailyTasks * job.eachOrder * 360).toLocaleString())
+      .replace('{level}', job.level);
+  };
+
+  return (
+    <div className="pb-12 p-4 space-y-8 bg-white min-h-full">
+      {/* Header */}
+      <div className="text-center space-y-2 px-4">
+        <h1 className="text-5xl font-black italic text-gray-900 tracking-tighter uppercase leading-none">{t('nav_income')}</h1>
+        <p className="text-sm font-black text-blue-600 tracking-[0.2em] uppercase">{t('income_subtitle')}</p>
+      </div>
+
+      <div className="px-3 space-y-10">
+        {/* Table of Level Income Rules */}
+        <div className="space-y-4">
+          <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-2 px-6 text-center shadow-sm">
+            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">{t('income_title')}</h2>
+          </div>
+          
+          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <table className="w-full text-center border-collapse min-w-max">
+              <thead>
+                <tr className="bg-slate-400 text-white text-[9px] uppercase font-black tracking-widest whitespace-nowrap">
+                  <th className="p-2 border border-slate-300">{t('profile_level')}</th>
+                  <th className="p-2 border border-slate-300">{t('balance_work')}</th>
+                  <th className="p-2 border border-slate-300">{t('daily_tasks')}</th>
+                  <th className="p-2 border border-slate-300">{t('each_order')}</th>
+                  <th className="p-2 border border-slate-300">{t('income_daily')}</th>
+                  <th className="p-2 border border-slate-300">{t('income_30day')}</th>
+                  <th className="p-2 border border-slate-300">{t('income_360day')}</th>
+                </tr>
+              </thead>
+              <tbody className="text-[10px] font-black text-slate-700">
+                {JOBS.map((job) => {
+                  const daily = job.dailyTasks * job.eachOrder;
+                  return (
+                    <tr key={`income-job-row-${job.id}`} className="even:bg-slate-50 whitespace-nowrap">
+                      <td className="p-2 border border-slate-200 uppercase">{job.level === JobLevel.INTERN ? t('job_intern') : job.level}</td>
+                      <td className="p-2 border border-slate-200">{job.deposit.toLocaleString()}</td>
+                      <td className="p-2 border border-slate-200">{job.dailyTasks}</td>
+                      <td className="p-2 border border-slate-200">{job.eachOrder}</td>
+                      <td className="p-2 border border-slate-200 font-bold text-slate-900">{daily.toLocaleString()}</td>
+                      <td className="p-2 border border-slate-200">{job.level === JobLevel.INTERN ? '-' : (daily * 30).toLocaleString()}</td>
+                      <td className="p-2 border border-slate-200">{job.level === JobLevel.INTERN ? '-' : (daily * 360).toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Detailed Level Descriptions */}
+        <div className="space-y-4">
+          {JOBS.map((job) => (
+            <div key={`income-job-desc-${job.id}`} className="p-4 rounded-2xl border-2 border-blue-100 bg-white space-y-3 shadow-sm">
+              <h3 className="text-lg font-black text-blue-600 uppercase text-center italic">{job.level === JobLevel.INTERN ? t('job_intern') : job.level}</h3>
+              <p className="text-[11px] font-bold text-slate-700 leading-relaxed text-center px-4">
+                {renderJobDesc(job)}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* Upgrade Level Rules */}
+        <div className="space-y-4">
+          <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-2 px-6 text-center shadow-sm">
+            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">{t('income_up_rules')}</h2>
+          </div>
+          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <table className="w-full text-center border-collapse min-w-max">
+              <thead>
+                <tr className="bg-slate-400 text-white text-[9px] uppercase font-black tracking-widest whitespace-nowrap">
+                  <th className="p-2 border border-slate-300">{t('income_up_level')}</th>
+                  <th className="p-2 border border-slate-300">{t('income_team_commission')}</th>
+                  <th className="p-2 border border-slate-300">{t('income_level1')}</th>
+                  <th className="p-2 border border-slate-300">{t('income_level2')}</th>
+                  <th className="p-2 border border-slate-300">{t('income_level3')}</th>
+                </tr>
+              </thead>
+              <tbody className="text-[10px] font-black text-slate-700">
+                {UP_LEVEL_RULES.map((rule) => (
+                  <tr key={`up-level-rule-${rule.level}`} className="even:bg-slate-50 whitespace-nowrap">
+                    <td className="p-2 border border-slate-200">{rule.level}</td>
+                    <td className="p-2 border border-slate-200">{rule.ratio}</td>
+                    <td className="p-2 border border-slate-200">{rule.level1.toLocaleString()}</td>
+                    <td className="p-2 border border-slate-200">{rule.level2.toLocaleString()}</td>
+                    <td className="p-2 border border-slate-200">{rule.level3.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Upgrade Bonus Explanations */}
+        <div className="space-y-4">
+          <div className="p-4 rounded-2xl border-2 border-blue-100 bg-white space-y-3 shadow-sm text-center">
+            <p className="text-[11px] font-bold text-slate-700 leading-relaxed">
+              {t('income_bonus_desc')}
+            </p>
+          </div>
+          <div className="p-4 rounded-2xl border-2 border-blue-100 bg-white space-y-3 shadow-sm text-center">
+            <p className="text-[11px] font-bold text-slate-700 leading-relaxed">
+              {t('income_bonus_desc2')}
+            </p>
+          </div>
+          <div className="p-4 rounded-2xl border-2 border-blue-100 bg-white space-y-3 shadow-sm text-center">
+            <p className="text-[11px] font-bold text-slate-700 leading-relaxed">
+              {t('income_bonus_tips')}
+            </p>
+          </div>
+        </div>
+
+        {/* Table of Task Rules */}
+        <div className="space-y-4">
+          <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-2 px-6 text-center shadow-sm">
+            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">{t('income_task_rules')}</h2>
+          </div>
+          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <table className="w-full text-center border-collapse min-w-max">
+              <thead>
+                <tr className="bg-slate-400 text-white text-[9px] uppercase font-black tracking-widest whitespace-nowrap">
+                  <th className="p-2 border border-slate-300">{t('profile_level')}</th>
+                  <th className="p-2 border border-slate-300">{t('income_team_commission')}</th>
+                  <th className="p-2 border border-slate-300">{t('income_level1')}</th>
+                  <th className="p-2 border border-slate-300">{t('income_level2')}</th>
+                  <th className="p-2 border border-slate-300">{t('income_level3')}</th>
+                </tr>
+              </thead>
+              <tbody className="text-[10px] font-black text-slate-700">
+                {TASK_RULES.map((rule) => (
+                  <tr key={`task-rule-${rule.level}`} className="even:bg-slate-50 whitespace-nowrap">
+                    <td className="p-2 border border-slate-200">{rule.level}</td>
+                    <td className="p-2 border border-slate-200">{rule.ratio}</td>
+                    <td className="p-2 border border-slate-200">{rule.level1.toLocaleString()}</td>
+                    <td className="p-2 border border-slate-200">{rule.level2.toLocaleString()}</td>
+                    <td className="p-2 border border-slate-200">{rule.level3.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Task Commission Explanations */}
+        <div className="space-y-4">
+          {[
+            t('income_commission_a'),
+            t('income_commission_b'),
+            t('income_commission_c'),
+            t('income_commission_note')
+          ].map((text, idx) => (
+            <div key={`task-comm-note-${idx}`} className="p-4 rounded-2xl border-2 border-blue-100 bg-white shadow-sm text-center">
+              <p className="text-[11px] font-bold text-slate-700 leading-relaxed">{text}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Table of Position Rules */}
+        <div className="space-y-4">
+          <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-2 px-6 text-center shadow-sm">
+            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">{t('income_pos_rules')}</h2>
+          </div>
+          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <table className="w-full text-center border-collapse min-w-max">
+              <thead>
+                <tr className="bg-slate-400 text-white text-[9px] uppercase font-black tracking-widest whitespace-nowrap">
+                  <th className="p-2 border border-slate-300 text-left">{t('income_pos_title')}</th>
+                  <th className="p-2 border border-slate-300">{t('income_team_size')}</th>
+                  <th className="p-2 border border-slate-300">{t('income_monthly_salary')}</th>
+                </tr>
+              </thead>
+              <tbody className="text-[10px] font-black text-slate-700 whitespace-nowrap">
+                {POSITION_RULES.map((rule) => {
+                  const posKey = rule.position === 'Internship Assistant' ? 'pos_intern_assistant' :
+                               rule.position === 'Official Assistant' ? 'pos_official_assistant' :
+                               rule.position === 'Formal Supervisor' ? 'pos_formal_supervisor' :
+                               rule.position === 'Marketing Manager' ? 'pos_marketing_manager' :
+                               rule.position === 'Regional Manager' ? 'pos_regional_manager' :
+                               rule.position === 'Marketing Director' ? 'pos_marketing_director' :
+                               rule.position === 'Company Partner' ? 'pos_company_partner' : null;
+
+                  const sizeKey = rule.teamSize === '15 direct reports' ? 'team_15_direct' :
+                                rule.teamSize === '25 direct reports' ? 'team_25_direct' :
+                                rule.teamSize === '25-150-person team' ? 'team_150_team' :
+                                rule.teamSize === '25-500-person team' ? 'team_500_team' :
+                                rule.teamSize === '25-1500-person team' ? 'team_1500_team' :
+                                rule.teamSize === '25-3500-person team' ? 'team_3500_team' :
+                                rule.teamSize === '25-7000-person team' ? 'team_7000_team' : null;
+
+                  return (
+                    <tr key={`pos-rule-row-${rule.position}`} className="even:bg-slate-50">
+                      <td className="p-2 border border-slate-200 text-left">{posKey ? t(posKey as any) : rule.position}</td>
+                      <td className="p-2 border border-slate-200">{sizeKey ? t(sizeKey as any) : rule.teamSize}</td>
+                      <td className="p-2 border border-slate-200 font-black text-slate-900">{rule.monthlySalary.toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Position Descriptions */}
+        <div className="space-y-4">
+          {POSITION_RULES.map((rule) => {
+            const posKey = rule.position === 'Internship Assistant' ? 'pos_intern_assistant' :
+                         rule.position === 'Official Assistant' ? 'pos_official_assistant' :
+                         rule.position === 'Formal Supervisor' ? 'pos_formal_supervisor' :
+                         rule.position === 'Marketing Manager' ? 'pos_marketing_manager' :
+                         rule.position === 'Regional Manager' ? 'pos_regional_manager' :
+                         rule.position === 'Marketing Director' ? 'pos_marketing_director' :
+                         rule.position === 'Company Partner' ? 'pos_company_partner' : null;
+            const posName = posKey ? t(posKey as any) : rule.position;
+
+            let desc = "";
+            if (rule.position === 'Formal Supervisor') desc = t('income_pos_supervisor_desc');
+            else if (rule.position === 'Marketing Manager') desc = t('income_pos_manager_desc');
+            else if (rule.position === 'Regional Manager') desc = t('income_pos_regional_desc');
+            else if (rule.position === 'Marketing Director') desc = t('income_pos_director_desc');
+            else if (rule.position === 'Company Partner') desc = t('income_pos_partner_desc');
+            else desc = t('income_pos_simple_desc').replace('{count}', rule.teamSize.split(' ')[0]);
+
+            return (
+              <div key={`pos-desc-card-${rule.position}`} className="p-4 rounded-2xl border-2 border-blue-100 bg-white space-y-3 shadow-sm text-center">
+                <h3 className="text-lg font-black text-blue-600 uppercase italic">{posName}</h3>
+                <p className="text-[11px] font-bold text-slate-700 italic">
+                  {posName}, {desc}, {t('income_monthly_salary').toLowerCase()} {t('balance_work')} {rule.monthlySalary.toLocaleString()} ETB
+                </p>
+              </div>
+            );
+          })}
+          <div className="p-4 rounded-2xl border-2 border-blue-100 bg-white shadow-sm text-center">
+            <p className="text-[11px] font-bold text-slate-700 leading-relaxed">
+              {t('income_career_desc')}
+            </p>
+          </div>
+        </div>
+
+        {/* Fund Rules Explanation */}
+        <div className="space-y-4">
+          <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-2 px-6 text-center shadow-sm">
+            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">{t('income_fund_rules_title')}</h2>
+          </div>
+
+          <div className="p-4 rounded-2xl border-2 border-blue-100 bg-white shadow-sm text-center">
+            <p className="text-[11px] font-bold text-slate-700 leading-relaxed">
+              {t('income_fund_desc')}
+            </p>
+          </div>
+          
+          <div className="p-4 rounded-2xl border-2 border-blue-100 bg-white shadow-sm flex items-center gap-4">
+            <div className="w-20 h-20 bg-blue-50 rounded-2xl flex items-center justify-center border border-blue-100 shadow-inner shrink-0">
+              <span className="text-3xl font-black text-blue-600">F1</span>
+            </div>
+            <div className="space-y-3 flex-1 min-w-0">
+              <h3 className="text-xl font-black text-slate-800 tracking-tight">{t('nav_fund')} 1</h3>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="overflow-hidden">
+                  <p className="text-[8px] font-bold text-slate-400 uppercase">{t('income_fund_cycle')}</p>
+                  <p className="text-[10px] font-black text-slate-800">7{t('income_daily').replace(/[\s\S]*/, currentLang === 'EN' ? 'Day' : currentLang === 'AM' ? 'ቀን' : currentLang === 'OR' ? 'Guyyaa' : 'Maalmood')}</p>
+                </div>
+                <div className="overflow-hidden">
+                  <p className="text-[8px] font-bold text-slate-400 uppercase">{t('investment_profit')}</p>
+                  <p className="text-[10px] font-black text-slate-800">1.5%</p>
+                </div>
+                <div className="overflow-hidden">
+                  <p className="text-[8px] font-bold text-slate-400 uppercase whitespace-nowrap">{t('investment_min').substring(0, 8)}...</p>
+                  <p className="text-[10px] font-black text-slate-800">1000</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {[
+            t('income_exclusive_benefits'),
+            t('income_purchase_instructions'),
+            t('income_fund_reminder'),
+            t('income_return_example'),
+          ].map((text, idx) => (
+            <div key={`fund-info-note-${idx}`} className="p-4 rounded-2xl border-2 border-blue-100 bg-white shadow-sm text-center">
+              <p className="text-[11px] font-bold text-slate-700 leading-relaxed whitespace-pre-wrap">{text}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Closing Welcome */}
+        <div className="space-y-6 pt-4">
+          <div className="p-6 rounded-3xl border-2 border-blue-100 bg-white shadow-lg space-y-4 text-center">
+            <p className="text-lg font-black text-blue-600 leading-relaxed italic">
+              {t('income_closing_welcome')}
+            </p>
+          </div>
+          
+          <div className="rounded-3xl overflow-hidden h-32 shadow-xl border border-gray-100">
+            <img 
+              src="https://images.unsplash.com/photo-1513201099705-a9746e1e201f?w=800&h=400&fit=crop" 
+              alt="Welcome Gift" 
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        </div>
+      </div>
+      <div className="pb-16" />
+    </div>
+  );
+}
+
+function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, t, currentLang = 'EN' }: { currentLevel: JobLevel, onTaskAction: (t: string, c: number, taskId?: string) => void, tasksClaimedToday: number, currentUser: any, t: any, currentLang?: string }) {
+  const job = JOBS.find(j => j.level === currentLevel) || JOBS[0];
+  const taskCount = job.dailyTasks;
+  const commission = job.eachOrder;
+  const [timeLeft, setTimeLeft] = useState('');
+  const [dbCompletedIds, setDbCompletedIds] = useState<string[]>([]);
+  
+  // Realtime Firestore tasks list
+  const [dbTasks, setDbTasks] = useState<any[]>([]);
+  
+  // Assigned tasks for today state
+  const [assignedMissions, setAssignedMissions] = useState<any[]>([]);
+  const [isAllocating, setIsAllocating] = useState(false);
+  const [allocationProgress, setAllocationProgress] = useState(0);
+  const [allocationStep, setAllocationStep] = useState('');
+
+  // Rating Modal state
+  const [activeWatchTask, setActiveWatchTask] = useState<any | null>(null);
+  const [selectedRating, setSelectedRating] = useState<number>(0);
+  const [hoverRating, setHoverRating] = useState<number>(0);
+  const [selectedTag, setSelectedTag] = useState<string>('');
+  const [showCongrats, setShowCongrats] = useState<string | null>(null);
+  const [watchTimer, setWatchTimer] = useState<number>(10);
+
+  // 10 Second Video Countdown Timer
+  useEffect(() => {
+    if (activeWatchTask) {
+      setWatchTimer(10);
+      const interval = setInterval(() => {
+        setWatchTimer((prev) => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [activeWatchTask]);
+
+  // Claimed task states (local memory)
+  const getTodayKey = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  };
+
+  const userId = getUserDocId();
+  const assignStatusKey = `earnova_assigned_status_${userId}_${getTodayKey()}`;
+  const assignContentKey = `earnova_assigned_content_${userId}_${getTodayKey()}`;
+  const localClaimedKey = `earnova_claimed_tasks_${userId}_${getTodayKey()}`;
+
+  const [claimedList, setClaimedList] = useState<string[]>(() => {
+    const saved = localStorage.getItem(localClaimedKey);
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Load database tasks from Firestore tasks collection
+  useEffect(() => {
+    const q = query(collection(db, 'tasks'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setDbTasks(tasks);
+    }, (err) => {
+      console.error("Firestore loading tasks error in TaskPage", err);
+      try {
+        handleFirestoreError(err, OperationType.LIST, 'tasks');
+      } catch (formattedErr) {
+        // Log the error nicely or let state handle it if needed
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Sync historical claims from user profile in Firestore (real-time snapshot listener)
+  useEffect(() => {
+    const activeUserId = getUserDocId();
+    if (!activeUserId) return;
+    const userRef = doc(db, 'users', activeUserId);
+    const unsub = onSnapshot(userRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data && data.completedTaskIds) {
+          setDbCompletedIds(data.completedTaskIds);
+          // Sync to localStorage fallback
+          localStorage.setItem(`earnova_historical_claimed_${activeUserId}`, JSON.stringify(data.completedTaskIds));
+        }
+      }
+    }, (err) => {
+      console.error("Error loading historical claims in TaskPage", err);
+    });
+    return () => unsub();
+  }, []);
+
+  // Fetch or set existing allocated tasks from localStorage and clear old fallbacks if present
+  useEffect(() => {
+    const savedContent = localStorage.getItem(assignContentKey);
+    if (savedContent) {
+      try {
+        const parsed = JSON.parse(savedContent);
+        const hasFallbacks = parsed.some((t: any) => 
+          !t.dbSource || 
+          (t.id && String(t.id).includes('fallback')) || 
+          (t.title && (
+            t.title.includes('Review E-Wallet Tech') || 
+            t.title.includes('Watch Commercial Spot') || 
+            t.title.includes('Verify User Flow') || 
+            t.title.includes('Evaluate Video Spot') || 
+            t.title.includes('Review Video Content') || 
+            t.title.includes('Watch Ad Promotion') || 
+            t.title.includes('Rate Media Commercial')
+          ))
+        );
+        if (hasFallbacks) {
+          localStorage.removeItem(assignContentKey);
+          localStorage.removeItem(assignStatusKey);
+          setAssignedMissions([]);
+        } else {
+          setAssignedMissions(parsed);
+        }
+      } catch (e) {
+        setAssignedMissions([]);
+      }
+    }
+  }, [assignContentKey, assignStatusKey]);
+
+  // Sync timers
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date();
+      const tomorrow = new Date();
+      tomorrow.setHours(24, 0, 0, 0);
+      const diff = tomorrow.getTime() - now.getTime();
+      
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      
+      setTimeLeft(`${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  // Normalize comparison to match task levels securely (e.g. LEVEL 1 -> JOB1, INTERN -> INTERN)
+  const normalizeLevel = (lvlStr: string) => {
+    if (!lvlStr) return 'ALL';
+    const clean = lvlStr.trim().toUpperCase();
+    if (clean === 'ALL') return 'ALL';
+    if (clean === 'INTERN' || clean === 'INTERNSHIP' || clean === 'INTERN USERS') return 'INTERN';
+    
+    // Convert "LEVEL 1" or "LEVEL1" -> "JOB1"
+    const lvlMatch = clean.match(/LEVEL\s*(\d+)/);
+    if (lvlMatch) {
+      return `JOB${lvlMatch[1]}`;
+    }
+    // Convert "JOB 1" -> "JOB1"
+    const jobMatch = clean.match(/JOB\s*(\d+)/);
+    if (jobMatch) {
+      return `JOB${jobMatch[1]}`;
+    }
+    return clean;
+  };
+
+  const isLocked = tasksClaimedToday >= taskCount;
+
+  // Let's create an allocator handler
+  const handleAllocateTasks = () => {
+    let matchedDbTasks = dbTasks.filter(item => {
+      const lv = item.level ? item.level.toUpperCase() : 'ALL';
+      // If user is on INTERN level, make ALL uploaded tasks available to them!
+      if (normalizeLevel(currentLevel) === 'INTERN') {
+        return true;
+      }
+      return normalizeLevel(lv) === 'ALL' || normalizeLevel(lv) === normalizeLevel(currentLevel);
+    });
+
+    // Fallback: if no tasks are matched for our level but there are ANY tasks uploaded, use them to prevent blockages!
+    if (matchedDbTasks.length === 0 && dbTasks.length > 0) {
+      matchedDbTasks = dbTasks;
+    }
+
+    if (matchedDbTasks.length === 0) {
+      alert(currentLang === 'AM' 
+        ? 'በአስተዳዳሪው የተጫነ ምንም የቪዲዮ ስራ የለም። እባክዎ አስተዳዳሪውን ያነጋግሩ ወይም ቆይተው እንደገና ይሞክሩ።' 
+        : 'There are no video tasks uploaded by the administrator in the system. Please wait for the admin to publish video tasks.');
+      return;
+    }
+
+    setIsAllocating(true);
+    setAllocationProgress(0);
+    setAllocationStep('Connecting to secure streaming gateways...');
+    WebApp.HapticFeedback.impactOccurred('medium');
+
+    const steps = [
+      { progress: 15, text: 'Resolving active sponsors with level credentials...' },
+      { progress: 40, text: 'Synchronizing ad buffers and stream packages...' },
+      { progress: 70, text: `Synthesizing daily payload matches for Job Level ${currentLevel}...` },
+      { progress: 95, text: 'Confirming high-commission stream validation...' },
+      { progress: 100, text: 'Allocation Sequence Complete!' }
+    ];
+
+    let currentStepIdx = 0;
+    const interval = setInterval(() => {
+      if (currentStepIdx < steps.length) {
+        const stepStatus = steps[currentStepIdx];
+        setAllocationProgress(stepStatus.progress);
+        setAllocationStep(stepStatus.text);
+        currentStepIdx++;
+        WebApp.HapticFeedback.impactOccurred('light');
+      } else {
+        clearInterval(interval);
+        
+        // Suppositions & Generative Fallbacks
+        const results: any[] = [];
+        
+        // 1. Unseen matching tasks first (prioritizing new content)
+        // Combine real-time dbCompletedIds with localStorage historical fallback
+        const localHistKey = `earnova_historical_claimed_${userId}`;
+        let localHist: string[] = [];
+        if (localHistKey) {
+          try {
+            const savedStr = localStorage.getItem(localHistKey);
+            if (savedStr) localHist = JSON.parse(savedStr);
+          } catch {}
+        }
+        const allCompletedIds = Array.from(new Set([...dbCompletedIds, ...localHist]));
+
+        const unseen = matchedDbTasks.filter(t => !allCompletedIds.includes(t.id));
+        unseen.forEach((t) => {
+          if (results.length < taskCount) {
+            results.push({
+              id: t.id || Math.random().toString(),
+              baseTaskId: t.id,
+              title: t.title,
+              url: t.url,
+              commission: t.commission || commission,
+              category: t.category || 'VIDEO WATCH',
+              dbSource: true
+            });
+          }
+        });
+
+        // 2. If we need more to meet the daily taskCount quota, cyclically pull from all available level tasks starting from the oldest (index 0)
+        // This satisfies: "if there is no unseen video repeat the first day video and continued like this"
+        let cycleIndex = 0;
+        while (results.length < taskCount && matchedDbTasks.length > 0) {
+          const t = matchedDbTasks[cycleIndex % matchedDbTasks.length];
+          // Try to avoid adding duplicate tasks in the same daily allocation slot if we have enough available
+          const alreadyAdded = results.some(r => r.baseTaskId === t.id);
+          if (!alreadyAdded || results.length >= matchedDbTasks.length) {
+            results.push({
+              id: `${t.id}-slot-${results.length}`,
+              baseTaskId: t.id,
+              title: t.title,
+              url: t.url,
+              commission: t.commission || commission,
+              category: t.category || 'VIDEO WATCH',
+              dbSource: true
+            });
+          }
+          cycleIndex++;
+        }
+
+        // Save allocated tasks
+        localStorage.setItem(assignStatusKey, 'true');
+        localStorage.setItem(assignContentKey, JSON.stringify(results));
+        setAssignedMissions(results);
+        setIsAllocating(false);
+        WebApp.HapticFeedback.notificationOccurred('success');
+      }
+    }, 600);
+  };
+
+  const handleClaimReward = (task: any) => {
+    if (selectedRating === 0 || !selectedTag) {
+      alert("Please choose a rating and select a feedback tag!");
+      return;
+    }
+
+    if (claimedList.includes(task.id)) return;
+    if (isLocked) return;
+
+    // Add to claimed lists
+    const updated = [...claimedList, task.id];
+    setClaimedList(updated);
+    localStorage.setItem(localClaimedKey, JSON.stringify(updated));
+
+    setActiveWatchTask(null);
+    setShowCongrats(task.title);
+    onTaskAction(task.title, task.commission, task.baseTaskId || task.id);
+
+    // Reset modals
+    setSelectedRating(0);
+    setSelectedTag('');
+
+    setTimeout(() => {
+      setShowCongrats(null);
+    }, 2000);
+  };
+
+  function isYouTubeUrl(url: string) {
+    if (!url) return false;
+    return url.includes('youtube.com') || url.includes('youtu.be');
+  }
+
+  function getYouTubeEmbedUrl(url: string) {
+    if (!url) return '';
+    let id = '';
+    try {
+      if (url.includes('youtube.com/embed/')) {
+        const cleanUrl = url.split('?')[0];
+        return `${cleanUrl}?autoplay=1&controls=0&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3&disablekb=1&fs=0&cc_load_policy=0&cc_lang_pref=en`;
+      }
+      if (url.includes('youtu.be/')) {
+        id = url.split('youtu.be/')[1]?.split('?')[0] || '';
+      } else if (url.includes('youtube.com/watch')) {
+        id = url.split('v=')[1]?.split('&')[0] || '';
+      } else if (url.includes('youtube.com/shorts/')) {
+        id = url.split('youtube.com/shorts/')[1]?.split('?')[0] || '';
+      }
+      if (id) {
+        return `https://www.youtube.com/embed/${id}?autoplay=1&controls=0&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3&disablekb=1&fs=0&cc_load_policy=0&cc_lang_pref=en`;
+      }
+    } catch (err) {
+      console.error("Url parsing error", err);
+    }
+    return '';
+  }
+
+  function isTikTokUrl(url: string) {
+    if (!url) return false;
+    return url.includes('tiktok.com');
+  }
+
+  function getTikTokEmbedUrl(url: string) {
+    if (!url) return '';
+    try {
+      const videoMatch = url.match(/\/video\/(\d+)/);
+      if (videoMatch && videoMatch[1]) {
+        return `https://www.tiktok.com/embed/v2/${videoMatch[1]}`;
+      }
+      if (url.includes('tiktok.com/embed/')) {
+        return url;
+      }
+    } catch (err) {
+      console.error("TikTok URL parsing error", err);
+    }
+    return '';
+  }
+
+  function isDirectVideoUrl(url: string) {
+    if (!url) return false;
+    const cleanUrl = url.split('?')[0].toLowerCase();
+    return cleanUrl.endsWith('.mp4') || 
+           cleanUrl.endsWith('.webm') || 
+           cleanUrl.endsWith('.ogg') || 
+           cleanUrl.endsWith('.mov') ||
+           url.includes('.mp4?') ||
+           url.includes('.webm?') ||
+           url.includes('.ogg?') ||
+           url.includes('.mov?');
+  }
+
+  function isVimeoUrl(url: string) {
+    if (!url) return false;
+    return url.includes('vimeo.com');
+  }
+
+  function getVimeoEmbedUrl(url: string) {
+    if (!url) return '';
+    try {
+      const match = url.match(/vimeo\.com\/(\d+)/);
+      if (match && match[1]) {
+        return `https://player.vimeo.com/video/${match[1]}`;
+      }
+    } catch (err) {}
+    return '';
+  }
+
+  // If daily limit already reached
+  if (isLocked) {
+    return (
+      <div className="px-6 py-12 flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6">
+        <motion.div 
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="w-24 h-24 bg-rose-100 rounded-full flex items-center justify-center text-rose-600 mb-2"
+        >
+          <Lock size={48} className="stroke-[2.5]" />
+        </motion.div>
+        
+        <div className="space-y-2">
+          <h2 className="text-2xl font-black italic text-gray-900 uppercase tracking-tighter">{t('daily_limit_reached')}</h2>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest max-w-[240px] mx-auto leading-relaxed">
+            {t('daily_limit_desc').replace('{count}', taskCount.toString())}
+          </p>
+        </div>
+
+        <div className="bg-[#0A0F1E] border border-white/10 px-6 py-4 rounded-3xl w-full max-w-xs text-center">
+          <p className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em] mb-1">{t('status_locked')}</p>
+          <p className="text-sm font-black text-white">{t('come_back_tomorrow')}</p>
+        </div>
+
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex items-center gap-2 text-rose-500 bg-rose-500/10 px-4 py-2 rounded-full border border-rose-500/10">
+            <Clock size={14} />
+            <span className="text-[10px] font-black uppercase tracking-widest">{t('reset_at')}</span>
+          </div>
+          <div className="flex gap-2">
+            {timeLeft.split(':').map((unit, i) => (
+              <div key={i} className="flex items-center gap-1">
+                <div className="bg-gray-900 text-white w-10 h-10 rounded-xl flex items-center justify-center text-lg font-black italic tracking-tighter w-12 h-12">
+                  {unit}
+                </div>
+                {i < 2 && <span className="font-black text-gray-300">:</span>}
+              </div>
+            ))}
+          </div>
+          <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Time remaining until reset</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Onboarding screens: If daily task channels are not yet assigned/allocated for today
+  if (assignedMissions.length === 0) {
+    return (
+      <div className="px-5 py-8 max-w-md mx-auto min-h-[75vh] flex flex-col justify-center">
+        {isAllocating ? (
+          <div className="text-center space-y-6">
+            <div className="relative w-28 h-28 mx-auto flex items-center justify-center">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}
+                className="absolute inset-0 border-4 border-blue-500/20 border-t-blue-600 rounded-full"
+              />
+              <Film className="text-blue-600 animate-pulse" size={32} />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg font-black uppercase tracking-tighter text-gray-900">Configuring Streams</h3>
+              <p className="text-[10px] font-mono font-bold text-gray-400 tracking-wider h-8 max-w-xs mx-auto">{allocationStep}</p>
+            </div>
+            {/* Progress line */}
+            <div className="max-w-[180px] mx-auto bg-gray-100 h-1.5 rounded-full overflow-hidden">
+              <motion.div 
+                className="bg-blue-600 h-full"
+                animate={{ width: `${allocationProgress}%` }}
+              />
+            </div>
+          </div>
+        ) : (
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }} 
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-[36px] p-6 text-center space-y-6 border border-blue-100/80 shadow-2xl relative overflow-hidden"
+          >
+            <div className="absolute top-0 left-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
+            
+            <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto border border-blue-100">
+              <Film size={28} className="fill-blue-600" />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[8.5px] font-black tracking-[0.2em] bg-blue-600 text-white px-3 py-1 rounded-full uppercase">
+                VIP LEVEL ALLOCATION
+              </span>
+              <h2 className="text-xl font-black italic text-blue-950 uppercase tracking-tight pt-2">Task Streams Pending</h2>
+              <p className="text-[10px] font-black text-blue-900/40 max-w-[280px] mx-auto leading-relaxed">
+                Unlock and assign high-payout video task reels matching your daily level limits. Rate real-time media to credit standard income.
+              </p>
+            </div>
+
+            {/* Profile Statistics Grid */}
+            <div className="grid grid-cols-2 gap-3 bg-blue-50/45 rounded-3xl p-4 text-left border border-blue-100/50">
+              <div>
+                <p className="text-[8px] font-black text-blue-900/50 uppercase tracking-widest">Active Level</p>
+                <p className="text-sm font-black italic text-blue-600 uppercase tracking-tight">Job Tier {currentLevel}</p>
+              </div>
+              <div>
+                <p className="text-[8px] font-black text-blue-900/50 uppercase tracking-widest">Available streams</p>
+                <p className="text-sm font-black text-blue-950">{taskCount} Videos</p>
+              </div>
+              <div className="mt-1">
+                <p className="text-[8px] font-black text-blue-900/50 uppercase tracking-widest">Commission / Video</p>
+                <p className="text-sm font-black text-emerald-600">ETB {commission.toFixed(2)}</p>
+              </div>
+              <div className="mt-1">
+                <p className="text-[8px] font-black text-blue-900/50 uppercase tracking-widest">Total daily potential</p>
+                <p className="text-sm font-black text-emerald-600">ETB {(commission * taskCount).toFixed(2)}</p>
+              </div>
+            </div>
+
+            <button 
+              onClick={handleAllocateTasks}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-blue-500/15"
+            >
+              Get Today's {taskCount} Tasks
+            </button>
+          </motion.div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 space-y-6 relative pb-8 pt-4">
+      {/* Success Animation congrats */}
+      <AnimatePresence>
+        {showCongrats && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.5 }}
+            className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-blue-600/20 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ y: 20 }}
+              animate={{ y: 0 }}
+              className="bg-[#0D1222] border border-white/10 rounded-3xl p-8 text-center shadow-2xl space-y-4 max-w-xs w-full"
+            >
+              <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-400 mx-auto border border-emerald-500/30">
+                <Check size={32} className="stroke-[3]" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-xl font-black text-white uppercase tracking-tight">{t('mission_success')}</h3>
+                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest leading-none mt-1">
+                  Task Approved & Verified
+                </p>
+              </div>
+              <div className="bg-emerald-500/10 border border-emerald-500/10 py-3 rounded-2xl">
+                <p className="text-[8px] font-black text-emerald-400 uppercase tracking-widest leading-none">Standard Balance Updated</p>
+                <p className="text-lg font-black text-emerald-400 mt-1">+ETB {commission.toFixed(2)}</p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="text-center mt-3">
+        <h1 className="text-xl font-black italic text-[#0A0F1E] tracking-tighter uppercase">{t('mission_title')}</h1>
+        <p className="text-[9.5px] font-black text-gray-400 uppercase tracking-widest mt-1 leading-none">{t('mission_subtitle')}</p>
+      </div>
+
+      {/* Progress Card */}
+      <div className="bg-white border border-blue-100 rounded-3xl p-4.5 text-left relative overflow-hidden shadow-sm">
+        <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/[0.02] rounded-full blur-2xl" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2 relative z-10">
+          <div>
+            <h2 className="text-xs font-black text-blue-950 uppercase tracking-tight">Active Task Queue</h2>
+            <p className="text-[8.5px] font-black text-blue-900/40 uppercase tracking-widest mt-0.5">Watch videos to earn instant payouts</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                localStorage.removeItem(assignContentKey);
+                localStorage.removeItem(assignStatusKey);
+                setAssignedMissions([]);
+                WebApp.HapticFeedback.impactOccurred('medium');
+              }}
+              className="px-3 py-1.5 text-[8.5px] font-black bg-slate-900 hover:bg-slate-800 text-white rounded-xl uppercase tracking-wider transition-all flex items-center gap-1 active:scale-95 shadow-md shadow-slate-900/10 border border-white/5"
+              title="Reload task list to fetch newly uploaded videos"
+            >
+              <RefreshCw size={10} className="stroke-[2.5]" />
+              Sync Stream Feed
+            </button>
+            <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2.5 py-1.5 rounded-full uppercase tracking-wider shrink-0">{tasksClaimedToday}/{taskCount} Done</span>
+          </div>
+        </div>
+        <div className="w-full h-1.5 bg-blue-50/50 rounded-full overflow-hidden">
+          <motion.div 
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.min(100, (tasksClaimedToday / taskCount) * 100)}%` }}
+            className="h-full bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.25)]"
+          />
+        </div>
+      </div>
+
+      {/* Task Streams List */}
+      <div className="grid grid-cols-1 gap-3.5">
+        {assignedMissions.map((m) => ({ ...m, commission: commission })).map((mission, idx) => {
+          const isClaimed = claimedList.includes(mission.id);
+          return (
+            <div key={`assigned-mission-row-${mission.id}`} className={cn(
+              "bg-white rounded-3xl p-4.5 border transition-all flex items-center justify-between shadow-sm",
+              isClaimed 
+                ? "opacity-60 border-blue-50/50 bg-[#F9FBFC]" 
+                : "border-blue-100 hover:border-blue-400 group active:scale-[0.99] cursor-pointer"
+            )}
+            onClick={() => {
+              if (!isClaimed) {
+                setActiveWatchTask(mission);
+                setSelectedRating(0);
+                setSelectedTag('');
+              }
+            }}
+            >
+              <div className="flex items-center gap-4 min-w-0">
+                <div className={cn(
+                  "w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xs border flex-shrink-0 transition-all",
+                  isClaimed 
+                    ? "bg-gray-100 text-gray-400 border-gray-200" 
+                    : "bg-blue-50 text-blue-600 border-blue-100 group-hover:bg-blue-600 group-hover:text-white"
+                )}>
+                  {isClaimed ? <Check size={20} /> : (idx + 1)}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-[12px] font-black text-blue-950 uppercase tracking-tight truncate leading-tight group-hover:text-blue-600 transition-colors">{mission.title}</h3>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className="text-[7.5px] font-black bg-blue-50 border border-blue-100/30 text-blue-500 px-1.5 py-0.5 rounded uppercase tracking-widest leading-none">
+                      {mission.category}
+                    </span>
+                    <span className="text-[8.5px] font-black text-emerald-600 uppercase tracking-wider">
+                      +ETB {Number(mission.commission).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isClaimed) {
+                    setActiveWatchTask(mission);
+                    setSelectedRating(0);
+                    setSelectedTag('');
+                  }
+                }}
+                disabled={isClaimed}
+                className={cn(
+                  "px-4.5 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all flex-shrink-0 leading-none",
+                  isClaimed 
+                    ? "bg-gray-150 text-gray-500" 
+                    : "bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/10 active:scale-95 text-xs"
+                )}
+              >
+                {isClaimed ? t('btn_claimed') : "WATCH"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Video Worktask Player and Rating Sheet Modal */}
+      <AnimatePresence>
+        {activeWatchTask && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4"
+          >
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+              className="bg-white w-full max-w-lg rounded-t-[36px] sm:rounded-[36px] border-t sm:border border-blue-100 overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[85vh] shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="p-5 border-b border-blue-100/60 bg-white flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse" />
+                  <span className="text-[9px] font-black tracking-widest text-blue-950 uppercase">SPONSOR AD STREAM STREAMING</span>
+                </div>
+                <button
+                  onClick={() => setActiveWatchTask(null)}
+                  className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 flex items-center justify-center transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Scrollable Container */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-5 no-scrollbar">
+                {/* Title */}
+                <div>
+                  <span className="text-[8px] font-black bg-blue-600 text-white px-2.5 py-1 rounded-md uppercase tracking-widest">{activeWatchTask.category}</span>
+                  <h3 className="text-base font-black text-blue-950 uppercase tracking-tight mt-1">{activeWatchTask.title}</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] font-black text-emerald-600">Commission: +ETB {Number(activeWatchTask.commission).toFixed(2)}</span>
+                  </div>
+                </div>
+
+                {/* Video Player Box */}
+                <div className="aspect-video w-full bg-slate-950 rounded-2xl border border-blue-100/50 overflow-hidden relative group flex items-center justify-center">
+                  {isYouTubeUrl(activeWatchTask.url) && getYouTubeEmbedUrl(activeWatchTask.url) ? (
+                    <div className="absolute inset-0 w-full h-full overflow-hidden">
+                      <iframe 
+                        src={getYouTubeEmbedUrl(activeWatchTask.url)} 
+                        title={activeWatchTask.title}
+                        className="absolute w-[114%] h-[114%] -top-[7%] -left-[7%] pointer-events-auto"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                      />
+                      {/* Top Overlay blocking YouTube links and title clickout */}
+                      <div className="absolute top-0 left-0 right-0 h-[28%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                      {/* Bottom Overlay blocking controls, progress bar, logo, settings */}
+                      <div className="absolute bottom-0 left-0 right-0 h-[28%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                      {/* Left Overlay blocking any other sidebar info */}
+                      <div className="absolute top-[28%] bottom-[28%] left-0 w-[15%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                      {/* Right Overlay blocking watermark and logos */}
+                      <div className="absolute top-[28%] bottom-[28%] right-0 w-[15%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                    </div>
+                  ) : isTikTokUrl(activeWatchTask.url) && getTikTokEmbedUrl(activeWatchTask.url) ? (
+                    <iframe 
+                      src={getTikTokEmbedUrl(activeWatchTask.url)} 
+                      title={activeWatchTask.title}
+                      className="w-full h-full"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                      allowFullScreen
+                    />
+                  ) : isVimeoUrl(activeWatchTask.url) && getVimeoEmbedUrl(activeWatchTask.url) ? (
+                    <iframe 
+                      src={getVimeoEmbedUrl(activeWatchTask.url)} 
+                      title={activeWatchTask.title}
+                      className="w-full h-full"
+                      allow="autoplay; fullscreen; picture-in-picture" 
+                      allowFullScreen
+                    />
+                  ) : isDirectVideoUrl(activeWatchTask.url) ? (
+                    <video 
+                      src={activeWatchTask.url}
+                      controls
+                      playsInline
+                      className="w-full h-full"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-center p-6 space-y-4 bg-gradient-to-b from-blue-50/50 to-blue-100/50">
+                      <div className="w-16 h-16 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center border border-blue-200/50 animate-pulse">
+                        <Play size={32} className="fill-blue-600 stroke-[1.5]" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-black text-blue-955 uppercase tracking-tight">Stream Ready</p>
+                        <p className="text-[9px] font-black text-blue-900/40 max-w-[240px] leading-relaxed mx-auto font-mono">Watch the stream fully below to verify and unlock your ETB earnings.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 10 Seconds Playback Timer Progress Track */}
+                <div className="bg-slate-900 border border-white/5 rounded-2xl p-4 flex flex-col space-y-2">
+                  <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider">
+                    <span className="text-gray-400">Stream Security Timer</span>
+                    {watchTimer > 0 ? (
+                      <span className="text-amber-500 animate-pulse flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping inline-block shrink-0" />
+                        Watching Required: {watchTimer}s
+                      </span>
+                    ) : (
+                      <span className="text-emerald-400 font-bold flex items-center gap-1">
+                        ✓ Stream Target Verified
+                      </span>
+                    )}
+                  </div>
+                  <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden border border-white/5">
+                    <motion.div 
+                      className="bg-gradient-to-r from-amber-500 to-blue-500 h-full rounded-full"
+                      initial={{ width: "0%" }}
+                      animate={{ width: `${((10 - watchTimer) / 10) * 100}%` }}
+                      transition={{ duration: 0.3 }}
+                    />
+                  </div>
+                </div>
+
+                {/* Rating Stream form */}
+                <div className="bg-blue-50/30 border border-blue-100 rounded-3xl p-5 space-y-4 shadow-inner">
+                  <div className="text-center space-y-1.5">
+                    <p className="text-[8px] font-black text-blue-600 uppercase tracking-[0.15em] leading-none">Rate This Promotion Stream (Required)</p>
+                    <p className="text-[9.5px] font-black text-blue-900/40 uppercase tracking-widest">Please submit your rating to claim earnings</p>
+                  </div>
+
+                  {/* Rating Stars Selection */}
+                  <div className="flex justify-center gap-2.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        onClick={() => setSelectedRating(star)}
+                        onMouseEnter={() => setHoverRating(star)}
+                        onMouseLeave={() => setHoverRating(0)}
+                        className="transition-transform active:scale-75 p-1"
+                      >
+                        <Star 
+                          size={28} 
+                          className={cn(
+                            "transition-all stroke-[2.5]",
+                            star <= (hoverRating || selectedRating) 
+                              ? "text-blue-600 fill-blue-600 filter drop-shadow-[0_0_10px_rgba(0,98,255,0.35)] scale-110" 
+                              : "text-gray-300"
+                          )} 
+                        />
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Feedback Tags Selector */}
+                  <div className="space-y-2">
+                    <p className="text-[8px] font-black text-blue-900/50 uppercase tracking-widest text-center">Select Feedback Tag (Required)</p>
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      {[
+                        "👍 High Quality",
+                        "🔥 Genuine Content",
+                        "📈 Highly Advised",
+                        "💡 Informative",
+                        "💎 High Payout"
+                      ].map((tag) => {
+                        const isChosen = selectedTag === tag;
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => setSelectedTag(tag)}
+                            className={cn(
+                              "px-3 py-2 rounded-xl text-[8.5px] font-black uppercase tracking-wider transition-all border",
+                              isChosen 
+                                ? "bg-blue-600 text-white border-blue-600" 
+                                : "bg-white text-blue-900 border-blue-100 hover:border-blue-300 hover:bg-blue-50/50 shadow-sm"
+                            )}
+                          >
+                            {tag}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Claim Action Button */}
+              <div className="p-5 border-t border-blue-100 bg-blue-50/50 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleClaimReward(activeWatchTask)}
+                  disabled={watchTimer > 0 || selectedRating === 0 || !selectedTag}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-blue-500/10 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  {watchTimer > 0 
+                    ? `WATCH THE STREAM FULLY TO CLAIM (${watchTimer}S)`
+                    : `Confirm Feed & Claim +ETB ${Number(activeWatchTask.commission).toFixed(2)}`
+                  }
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="pb-8" />
+    </div>
+  );
+}
+
+function ProfilePage({ 
+  balance, 
+  currentJobLevel, 
+  handleAction, 
+  t,
+  userPhone,
+  fullName
+}: { 
+  balance: { income: number, personal: number, workDeposit: number }, 
+  currentJobLevel: JobLevel, 
+  handleAction: (a: string) => void, 
+  t: any,
+  userPhone: string,
+  fullName: string
+}) {
+  const [showFeeTooltip, setShowFeeTooltip] = useState(false);
+
+  const sections = [
+    { label: t('financial_record'), icon: ScrollText, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { label: t('support_center'), icon: HelpCircle, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'About us', icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Onboarding Tour', icon: Star, color: 'text-amber-600', bg: 'bg-amber-50' },
+  ];
+
+  let formattedPhone = userPhone || '';
+  if (formattedPhone && !formattedPhone.startsWith('+') && !formattedPhone.startsWith('guest_')) {
+    const clean = formattedPhone.trim().replace(/\s+/g, '');
+    if (clean.startsWith('09') && clean.length === 10) {
+      formattedPhone = `+251 ${clean.slice(1, 4)} ${clean.slice(4, 7)} ${clean.slice(7)}`;
+    } else if (clean.startsWith('9') && clean.length === 9) {
+      formattedPhone = `+251 ${clean.slice(0, 3)} ${clean.slice(3, 6)} ${clean.slice(6)}`;
+    } else {
+      formattedPhone = `+251 ${clean}`;
+    }
+  }
+
+  return (
+    <div className="pb-12 space-y-6 pt-4 px-4 overflow-x-hidden">
+      {/* User Header */}
+      <div className="px-4 flex items-center justify-between mt-2">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="w-14 h-14 rounded-2xl overflow-hidden bg-gray-200 border-2 border-white shadow-lg">
+              <img src="https://api.dicebear.com/7.x/pixel-art/svg?seed=Felix" alt="Avatar" className="w-full h-full object-cover" />
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center">
+              <CheckSquare size={8} className="text-white" />
+            </div>
+          </div>
+          <div className="space-y-0.5">
+            <h2 className="text-sm font-black text-gray-900 tracking-tight leading-none mb-1 truncate max-w-[180px]">{fullName || 'Member'}</h2>
+            <p className="text-[10px] font-black font-mono text-gray-500 tracking-tight leading-none mb-1">{formattedPhone || 'No Phone'}</p>
+            <div className="flex items-center gap-1.5 pt-0.5">
+              <div className="flex items-center gap-1 bg-emerald-100 px-2 py-0.5 rounded-full text-[8px] font-black text-emerald-600 uppercase tracking-widest">
+                <CheckSquare size={8} />
+                Status: Active
+              </div>
+              <div className="flex items-center gap-1 bg-blue-600 px-2 py-0.5 rounded-full text-[8px] font-black text-white uppercase tracking-widest">
+                <Shield size={8} />
+                {currentJobLevel}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex gap-1.5">
+            <button onClick={() => handleAction('Settings')} className="p-1.5 bg-gray-100 text-gray-400 rounded-lg active:scale-90 transition-transform">
+              <Settings size={14} />
+            </button>
+            <button onClick={() => handleAction('Support Messages')} className="p-1.5 bg-gray-100 text-gray-400 rounded-lg relative active:scale-90 transition-transform">
+              <MessageCircle size={14} />
+              <div className="absolute top-0 right-0 w-3 h-3 bg-rose-500 text-white rounded-full flex items-center justify-center text-[7px] font-black">0</div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Wallets */}
+      <div className="px-4">
+        <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100 space-y-4">
+          <div className="flex gap-2">
+            <div className="flex-1 p-3 rounded-2xl bg-blue-50 border border-blue-100 flex flex-col items-center justify-center space-y-1 cursor-pointer active:bg-blue-100 transition-colors" onClick={() => handleAction('Income Wallet')}>
+              <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest">{t('nav_income')}</p>
+              <p className="text-lg font-black text-blue-600">ETB {balance.income.toFixed(2)}</p>
+            </div>
+            <div className="flex-1 p-3 rounded-2xl bg-indigo-50 border border-indigo-100 flex flex-col items-center justify-center space-y-1 cursor-pointer active:bg-indigo-100 transition-colors" onClick={() => handleAction('Personal Wallet')}>
+              <p className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">{t('balance_personal')}</p>
+              <p className="text-lg font-black text-indigo-600">ETB {balance.personal.toFixed(2)}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <button 
+              onClick={() => handleAction('RECHARGE')}
+              className="flex items-center justify-center gap-2 bg-gray-900 text-white py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest active:scale-95 transition-transform group"
+            >
+              <ArrowDownCircle size={18} className="text-blue-400 group-hover:scale-110 transition-transform" />
+              {t('btn_recharge')}
+            </button>
+            <div className="relative">
+              <button 
+                onClick={() => handleAction('WITHDRAW')}
+                className="w-full flex items-center justify-center gap-2 bg-white border-2 border-gray-100 text-gray-900 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest active:scale-95 transition-transform group"
+              >
+                <ArrowUpCircle size={18} className="text-rose-500 group-hover:scale-110 transition-transform" />
+                {t('btn_withdraw')}
+              </button>
+              
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowFeeTooltip(!showFeeTooltip);
+                }}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center border border-white shadow-md transition-all active:scale-90"
+                title="Service Fee Info"
+              >
+                <Info size={10} className="stroke-[3]" />
+              </button>
+
+              {showFeeTooltip && (
+                <div className="absolute bottom-full right-0 mb-3 w-56 bg-slate-900 text-white p-3.5 rounded-2xl shadow-xl z-50 text-[10px] uppercase font-black tracking-wider leading-relaxed border border-white/10 animate-fade-in">
+                  <div className="relative">
+                    <p className="text-amber-400 mb-1 flex items-center gap-1">
+                      <ShieldAlert size={12} className="shrink-0 animate-pulse text-amber-400" />
+                      10% Withdrawal Fee
+                    </p>
+                    <p className="text-gray-300 font-medium normal-case tracking-normal leading-normal">
+                      A 10% service fee is deducted on Income Wallet withdrawals. Personal Wallet has 0% fee.
+                    </p>
+                    <button 
+                      type="button" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowFeeTooltip(false);
+                      }}
+                      className="mt-2 text-rose-400 hover:text-rose-300 underline block text-[9px] font-bold text-left italic"
+                    >
+                      Got it, thanks
+                    </button>
+                    {/* Tooltip caret style pointer */}
+                    <div className="absolute top-[calc(100%+14px)] right-3 w-3 h-3 bg-slate-900 border-r border-b border-white/10 rotate-45" style={{ marginTop: '-20px' }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-4 text-center">
+        <p className="text-[9px] font-black italic text-blue-300 uppercase tracking-widest leading-none">
+          Date: 2026-03-09 ~ 2027-03-03
+        </p>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="px-4 grid grid-cols-2 gap-2">
+        {[
+          { label: t('balance_income'), value: balance.income.toFixed(2), color: "text-blue-600" },
+          { label: "Yesterday", value: "0", color: "text-blue-600" },
+          { label: "This month", value: balance.income.toFixed(2), color: "text-blue-600" },
+          { label: "This week", value: balance.income.toFixed(2), color: "text-blue-600" },
+          { label: t('balance_total'), value: balance.income.toFixed(2), color: "text-blue-600" },
+          { label: "Recommended", value: "0", color: "text-blue-600" },
+          { label: "Team tasks", value: "0", color: "text-blue-600" },
+          { label: t('balance_work'), value: balance.workDeposit.toLocaleString(), color: "text-blue-600" },
+        ].map((stat, idx) => (
+          <div key={`profile-stat-${stat.label}-${idx}`} className="bg-white p-3 rounded-2xl flex flex-col items-center justify-center text-center space-y-1 border border-gray-100 shadow-sm cursor-pointer active:brightness-95 transition-all" onClick={() => handleAction(stat.label)}>
+            <p className="text-[8px] font-black text-gray-400 uppercase tracking-tight leading-none h-4 flex items-center">{stat.label}</p>
+            <p className={cn("text-md font-black", stat.color)}>{stat.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Account Settings Section */}
+      <div className="px-4">
+        <div className="bg-gradient-to-br from-gray-900 to-slate-800 rounded-3xl p-5 shadow-xl border border-slate-700 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-blue-500/20 rounded-xl flex items-center justify-center text-blue-400">
+                <Settings size={18} />
+              </div>
+              <h3 className="text-sm font-black text-white uppercase tracking-wider italic">Account Security</h3>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: 'Password', icon: Lock, action: 'Change Password' },
+              { label: 'Email', icon: Mail, action: 'Update Email' },
+              { label: 'Phone', icon: Phone, action: 'Update Phone' },
+            ].map((item, i) => (
+              <button 
+                key={i}
+                onClick={() => handleAction(item.action)}
+                className="flex flex-col items-center justify-center py-3 px-2 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/10 active:scale-95 transition-all text-center group"
+              >
+                <item.icon size={16} className="text-blue-400 group-hover:scale-110 transition-transform mb-2" />
+                <span className="text-[9px] font-black text-blue-100 uppercase tracking-tighter">{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Menu Sections */}
+      <div className="px-4 grid grid-cols-4 gap-y-3 gap-x-2">
+        {sections.map((section, idx) => (
+          <button key={`profile-menu-${section.label}-${idx}`} onClick={() => handleAction(section.label)} className="flex flex-col items-center gap-1.5 group">
+            <div className={cn("w-10 h-10 rounded-full flex items-center justify-center shadow-sm transform transition-transform group-active:scale-90", section.bg, section.color)}>
+              <section.icon size={18} />
+            </div>
+            <span className="text-[8px] font-black text-gray-600 tracking-tight text-center leading-tight uppercase px-1">
+              {section.label}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Logout */}
+      <div className="px-4">
+        <button onClick={() => handleAction('Logout')} className="w-full bg-white border border-gray-100 text-gray-400 py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 shadow-sm active:bg-gray-50 transition-colors uppercase tracking-widest">
+          Log out
+        </button>
+      </div>
+      <div className="pb-8" />
+    </div>
+  );
+}

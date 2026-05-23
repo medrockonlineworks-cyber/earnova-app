@@ -1,0 +1,112 @@
+{
+  "entities": {
+    "Message": {
+      "title": "Message",
+      "description": "A chat message between a user and admin support",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "senderId": { "type": "string" },
+        "recipientId": { "type": "string" },
+        "sender": { "enum": ["user", "admin"] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "chatId": { "type": "string" }
+      },
+      "required": ["text", "senderId", "recipientId", "sender", "timestamp", "chatId"]
+    },
+    "ChatRoom": {
+      "title": "ChatRoom",
+      "description": "A session for support chat",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "lastMessage": { "type": "string" },
+        "lastUpdated": { "type": "string", "format": "date-time" },
+        "status": { "enum": ["active", "closed"] }
+      },
+      "required": ["userId", "userName", "lastUpdated", "status"]
+    },
+    "Withdrawal": {
+      "title": "Withdrawal",
+      "description": "A withdrawal request from a user",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number" },
+        "status": { "enum": ["pending", "completed", "failed"] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" },
+        "method": { "type": "string" }
+      },
+      "required": ["amount", "status", "timestamp", "userId"]
+    },
+    "RechargeRequest": {
+      "title": "RechargeRequest",
+      "description": "A recharge request from a user waiting for admin approval",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number" },
+        "status": { "enum": ["pending", "approved", "rejected"] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" },
+        "transactionId": { "type": "string" },
+        "proofImageUrl": { "type": "string" }
+      },
+      "required": ["amount", "status", "timestamp", "userId", "transactionId"]
+    },
+    "User": {
+      "title": "User",
+      "description": "App user profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "balance": { "type": "number" },
+        "role": { "enum": ["user", "admin", "intern"] },
+        "status": { "enum": ["active", "inactive"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "role", "balance"]
+    }
+  },
+  "firestore": {
+    "chats": {
+      "schema": "ChatRoom",
+      "description": "Collection of chat sessions"
+    },
+    "chats/{chatId}/messages": {
+      "schema": "Message",
+      "description": "Messages within a chat session"
+    },
+    "withdrawals": {
+      "schema": "Withdrawal",
+      "description": "Collection of withdrawal requests"
+    },
+    "recharges": {
+      "schema": "RechargeRequest",
+      "description": "Collection of recharge requests"
+    },
+    "users": {
+      "schema": "User",
+      "description": "Collection of registered users"
+    },
+    "chats": {
+      "schema": "ChatMessage",
+      "description": "Real-time messages between users and admin"
+    }
+  },
+  "definitions": {
+    "ChatMessage": {
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "senderId": { "type": "string" },
+        "recipientId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "senderName": { "type": "string" },
+        "isAdmin": { "type": "boolean" }
+      },
+      "required": ["text", "senderId", "timestamp"]
+    }
+  }
+}

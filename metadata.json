@@ -1,0 +1,8 @@
+{
+  "name": "EARNOVA",
+  "description": "A modern investment and task-based earning platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
