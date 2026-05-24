@@ -942,6 +942,7 @@ export default function App() {
             <InviteModal 
               onClose={() => setShowInviteModal(false)}
               t={t}
+              userPhone={currentUser?.uid}
             />
           </motion.div>
         )}
@@ -1029,62 +1030,73 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+            className="fixed inset-0 z-[100000] flex items-center justify-center p-6 bg-gradient-to-tr from-[#050814]/98 via-[#0A0F24]/96 to-[#050814]/98 backdrop-blur-xl"
           >
             <motion.div 
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
               transition={{ type: "spring", duration: 0.45 }}
-              className="relative w-full max-w-sm bg-[#0E1322] border border-white/10 rounded-[32px] overflow-hidden shadow-2xl flex flex-col"
+              className="relative w-full max-w-[330px] bg-[#0E1322] border border-amber-500/30 rounded-[32px] overflow-hidden shadow-[0_0_50px_rgba(245,158,11,0.15)] flex flex-col mx-auto"
             >
+              {/* Decorative Brand Top Bar Accent */}
+              <div className="h-1 bg-gradient-to-r from-blue-600 via-amber-500 to-indigo-600 w-full" />
+
               {/* Close Countdown Header */}
               <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
                 <button 
                   onClick={() => {
                     setShowAdPopup(false);
                     setActiveAd(null);
-                    WebApp.HapticFeedback.impactOccurred('light');
+                    if (WebApp?.HapticFeedback) {
+                      WebApp.HapticFeedback.impactOccurred('light');
+                    }
                   }}
-                  className="bg-black/60 hover:bg-black/80 text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10 flex items-center gap-1.5 backdrop-blur-sm shadow-sm active:scale-95 transition-all cursor-pointer"
+                  className="bg-black/70 hover:bg-black/90 text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-500/25 flex items-center gap-1.5 backdrop-blur-md shadow-lg active:scale-95 transition-all cursor-pointer"
                 >
-                  <span className="text-gray-400">Skip</span>
-                  <span className="bg-amber-500 text-[#0A0F1E] text-[9.5px] w-4.5 h-4.5 rounded-full flex items-center justify-center font-black">
+                  <span className="text-gray-300">Skip</span>
+                  <span className="bg-gradient-to-r from-amber-500 to-amber-400 text-[#0A0F1E] text-[9.5px] w-4.5 h-4.5 rounded-full flex items-center justify-center font-black shadow-inner">
                     {adCountdown}s
                   </span>
                 </button>
               </div>
 
               {/* Banner Area */}
-              <div className="relative aspect-[3/4] w-full bg-[#070A13] flex items-center justify-center overflow-hidden">
+              <div className="relative aspect-[3/4] w-full bg-gradient-to-b from-[#0F1322] to-[#070A13] flex items-center justify-center overflow-hidden p-3">
+                <div className="absolute inset-0 bg-radial-gradient from-blue-600/10 to-transparent opacity-50 pointer-events-none" />
                 <img 
                   src={activeAd.imageUrl} 
                   alt="Advertisement Banner" 
                   referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover select-none pointer-events-none"
+                  className="w-full h-full object-contain select-none pointer-events-none rounded-2xl border border-white/5 shadow-inner"
                 />
                 
                 {/* Subtle base gradient */}
-                <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-[#0E1322] via-[#0E1322]/40 to-transparent pointer-events-none" />
+                <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#0E1322] to-transparent pointer-events-none" />
               </div>
 
               {/* Action and Close controls */}
-              <div className="p-6 bg-[#0E1322] space-y-4 text-center">
-                <div>
-                  <h4 className="text-[9px] font-black text-amber-500 uppercase tracking-[0.2em] mb-1 leading-none">Official Partner</h4>
-                  <p className="text-xs font-black text-gray-400 uppercase tracking-tight italic">Ecosystem Sponsored Announcement</p>
+              <div className="p-5 bg-gradient-to-b from-[#0E1322] to-[#0A0F1E] space-y-4 text-center">
+                <div className="space-y-1">
+                  <div className="inline-flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    <span className="text-[8px] font-black text-amber-500 uppercase tracking-[0.2em] leading-none">Official Sponsor</span>
+                  </div>
+                  <h4 className="text-xs font-black text-white uppercase tracking-tight italic">Ecosystem Partner Promotion</h4>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex gap-3 pt-1">
                   <button 
                     onClick={() => {
                       setShowAdPopup(false);
                       setActiveAd(null);
-                      WebApp.HapticFeedback.impactOccurred('light');
+                      if (WebApp?.HapticFeedback) {
+                        WebApp.HapticFeedback.impactOccurred('light');
+                      }
                     }}
-                    className="flex-1 py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 cursor-pointer font-sans"
+                    className="flex-1 py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 cursor-pointer font-sans"
                   >
-                    Cancel / Skip
+                    Cancel
                   </button>
                   
                   <a 
@@ -1094,9 +1106,11 @@ export default function App() {
                     onClick={() => {
                       setShowAdPopup(false);
                       setActiveAd(null);
-                      WebApp.HapticFeedback.impactOccurred('light');
+                      if (WebApp?.HapticFeedback) {
+                        WebApp.HapticFeedback.impactOccurred('light');
+                      }
                     }}
-                    className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-400 text-[#0A0F1E] font-black rounded-2xl text-[9px] uppercase tracking-widest transition-all text-center flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/10"
+                    className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-[#0A0F1E] font-black rounded-2xl text-[9px] uppercase tracking-widest transition-all text-center flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 active:scale-95"
                   >
                     Details <ExternalLink size={10} />
                   </a>

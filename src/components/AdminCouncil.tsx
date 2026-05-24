@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Check, 
@@ -91,7 +91,8 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
 
   // States for advertisement management
   const [advertisements, setAdvertisements] = useState<any[]>([]);
-  const [adUrlInput, setAdUrlInput] = useState('');
+  const [selectedAdFileBase64, setSelectedAdFileBase64] = useState<string | null>(null);
+  const [selectedAdFileName, setSelectedAdFileName] = useState('');
   const [isUploadingAd, setIsUploadingAd] = useState(false);
   const [deletingAdId, setDeletingAdId] = useState<string | null>(null);
 
@@ -395,23 +396,48 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
     }
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file (PNG, JPG, JPEG, WEBP).');
+      return;
+    }
+
+    // Read the file and parse it into Base64 format
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSelectedAdFileBase64(reader.result as string);
+      setSelectedAdFileName(file.name);
+    };
+    reader.onerror = (err) => {
+      console.error("FileReader error:", err);
+      alert("Failed to read image file.");
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleUploadAd = async (e: any) => {
     e.preventDefault();
-    if (!adUrlInput.trim()) {
-      alert("Please enter or paste an Image URL!");
+    if (!selectedAdFileBase64) {
+      alert("Please choose/upload an image from your gallery first!");
       return;
     }
     
     setIsUploadingAd(true);
     try {
       await addDoc(collection(db, 'advertisements'), {
-        imageUrl: adUrlInput.trim(),
+        imageUrl: selectedAdFileBase64,
         timestamp: serverTimestamp() || new Date()
       });
       
-      WebApp.HapticFeedback.notificationOccurred('success');
-      setAdUrlInput('');
-      setSuccessToast("Advertisement Image added successfully!");
+      if (WebApp?.HapticFeedback) {
+        WebApp.HapticFeedback.notificationOccurred('success');
+      }
+      setSelectedAdFileBase64(null);
+      setSelectedAdFileName('');
+      setSuccessToast("Advertisement Image published successfully!");
       setTimeout(() => setSuccessToast(null), 3000);
     } catch (err: any) {
       console.error("Ad upload error:", err);
@@ -576,28 +602,76 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
   };
 
   const handleSystemReset = async () => {
-    WebApp.HapticFeedback.notificationOccurred('warning');
+    if (WebApp?.HapticFeedback) {
+      WebApp.HapticFeedback.notificationOccurred('warning');
+    }
     
-    // Reset the currentUser doc in Firestore to default initial signup stats if signed in
     const activeUserId = getUserDocId();
     if (activeUserId && activeUserId !== 'guest') {
       try {
-        const { doc, setDoc } = await import('firebase/firestore');
-        const userRef = doc(db, 'users', activeUserId);
-        await setDoc(userRef, {
-          personal: 0.00,
-          income: 0.00,
-          workDeposit: 0.00,
-          completedTaskIds: [],
-          onboardingClaimed: false,
-          currentLevel: 'INTERN',
-          status: 'active',
-          role: 'user',
-          totalRecharged: 0,
-          totalWithdrawn: 0
-        }, { merge: true });
+        const { doc, setDoc, deleteDoc, collection, getDocs } = await import('firebase/firestore');
+        
+        // 1. Delete all recharges
+        const rechargesSnap = await getDocs(collection(db, 'recharges'));
+        for (const d of rechargesSnap.docs) {
+          try {
+            await deleteDoc(doc(db, 'recharges', d.id));
+          } catch (e) {
+            console.error("Error deleting recharge:", d.id, e);
+          }
+        }
+
+        // 2. Delete all withdrawals
+        const withdrawalsSnap = await getDocs(collection(db, 'withdrawals'));
+        for (const d of withdrawalsSnap.docs) {
+          try {
+            await deleteDoc(doc(db, 'withdrawals', d.id));
+          } catch (e) {
+            console.error("Error deleting withdrawal:", d.id, e);
+          }
+        }
+
+        // 3. Delete all chats
+        const chatsSnap = await getDocs(collection(db, 'chats'));
+        for (const d of chatsSnap.docs) {
+          try {
+            await deleteDoc(doc(db, 'chats', d.id));
+          } catch (e) {
+            console.error("Error deleting chat:", d.id, e);
+          }
+        }
+
+        // 4. Reset or delete users
+        const usersSnap = await getDocs(collection(db, 'users'));
+        for (const d of usersSnap.docs) {
+          const userData = d.data();
+          if (d.id === activeUserId) {
+            // Keep the admin user alive but restore starting values
+            await setDoc(doc(db, 'users', d.id), {
+              personal: 0.00,
+              income: 0.00,
+              workDeposit: 0.00,
+              completedTaskIds: [],
+              onboardingClaimed: false,
+              currentLevel: 'INTERN',
+              status: 'active',
+              role: 'admin',
+              totalRecharged: 0,
+              totalWithdrawn: 0,
+              invitedBy: "",
+              investments: []
+            });
+          } else if (userData.role !== 'admin') {
+            // Delete all other non-admin users to clean up registrations and referral trees
+            try {
+              await deleteDoc(doc(db, 'users', d.id));
+            } catch (e) {
+              console.error("Error deleting user:", d.id, e);
+            }
+          }
+        }
       } catch (err) {
-        console.error("Error resetting user document in Firestore:", err);
+        console.error("Error resetting application in Firestore:", err);
       }
     }
     
@@ -1370,35 +1444,48 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                   </div>
 
                   <form onSubmit={handleUploadAd} className="space-y-4">
-                    <div className="space-y-1">
-                      <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest block ml-1">Ad Image URL</label>
-                      <input 
-                        type="text" 
-                        value={adUrlInput}
-                        onChange={(e) => setAdUrlInput(e.target.value)}
-                        placeholder="Paste image address (HTTPS e.g. https://...)"
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-xs font-bold text-white focus:border-amber-500 outline-none transition-all placeholder:text-gray-650"
-                      />
-                    </div>
-
-                    {adUrlInput.trim() && (
-                      <div className="border border-white/5 rounded-2xl p-2 bg-black/20 space-y-1.5">
-                        <p className="text-[8px] font-black uppercase tracking-widest text-amber-500">Live URL Image Preview:</p>
-                        <img 
-                          src={adUrlInput} 
-                          alt="Live Ad Preview" 
-                          referrerPolicy="no-referrer"
-                          className="w-full max-h-40 object-contain rounded-xl bg-[#0F1322] border border-white/5 mx-auto"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
+                    <div className="space-y-2">
+                      <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest block ml-1">Advertisement Banner Image</label>
+                      <div className="relative">
+                        <input 
+                          type="file" 
+                          id="ad-gallery-file-input"
+                          accept="image/*" 
+                          onChange={handleFileChange}
+                          className="hidden" 
                         />
+                        <label 
+                          htmlFor="ad-gallery-file-input"
+                          className="flex flex-col items-center justify-center p-8 bg-white/5 border border-dashed border-white/10 hover:border-amber-500/50 rounded-2xl cursor-pointer hover:bg-white/10 transition-all text-center min-h-[120px] relative overflow-hidden group"
+                        >
+                          {selectedAdFileBase64 ? (
+                            <div className="space-y-2 w-full">
+                              <img 
+                                src={selectedAdFileBase64} 
+                                alt="Preview" 
+                                className="max-h-36 object-contain rounded-xl border border-white/10 mx-auto"
+                              />
+                              <p className="text-[9px] font-medium text-amber-500 truncate max-w-xs mx-auto">Selected: {selectedAdFileName || 'Image File'}</p>
+                              <p className="text-[8px] font-black uppercase text-gray-500 tracking-widest">Click to choose another image</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-gray-400 group-hover:text-amber-500 group-hover:bg-amber-500/10 transition-all mx-auto">
+                                <Image size={20} />
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-gray-300">Click to Select From Gallery</p>
+                                <p className="text-[8px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">Supports PNG, JPG, JPEG, WEBP</p>
+                              </div>
+                            </div>
+                          )}
+                        </label>
                       </div>
-                    )}
+                    </div>
 
                     <button 
                       type="submit" 
-                      disabled={isUploadingAd}
+                      disabled={isUploadingAd || !selectedAdFileBase64}
                       className="w-full py-4 bg-amber-500 hover:bg-amber-400 text-[#0A0F1E] rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-md shadow-amber-500/10 flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
                     >
                       {isUploadingAd ? (
@@ -1409,7 +1496,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                       ) : (
                         <>
                           <Plus size={12} />
-                          Add Advertisement Image
+                          Publish Ad Banner
                         </>
                       )}
                     </button>

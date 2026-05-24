@@ -31,7 +31,24 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: LoginPageProps) {
-  const [activeTab, setActiveTab] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
+  const [invitedBy, setInvitedBy] = useState(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get('ref') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [activeTab, setActiveTab] = useState<'LOGIN' | 'REGISTER'>(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get('ref') ? 'REGISTER' : 'LOGIN';
+    } catch {
+      return 'LOGIN';
+    }
+  });
+
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -178,6 +195,25 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
               : 'Phone number is already registered. Please log in or use your correct password.');
           }
         } else {
+          let cleanInvitedBy = invitedBy.trim();
+          if (cleanInvitedBy.includes('-')) {
+            cleanInvitedBy = cleanInvitedBy.split('-').pop() || cleanInvitedBy;
+          }
+          
+          // Decode premium base36 invite code back to the original referrer phone number
+          if (/^[A-Z0-9]+$/i.test(cleanInvitedBy) && !cleanInvitedBy.startsWith('guest_') && isNaN(Number(cleanInvitedBy))) {
+            try {
+              const decodedNum = parseInt(cleanInvitedBy, 36);
+              if (!isNaN(decodedNum)) {
+                cleanInvitedBy = '0' + decodedNum.toString();
+              }
+            } catch (err) {
+              console.warn("Base36 decoding issue:", err);
+            }
+          } else if (!cleanInvitedBy.startsWith('guest_')) {
+            cleanInvitedBy = cleanInvitedBy.replace(/\D/g, '');
+          }
+
           // Write custom credentials & profile fields using cleanPhone as key to users
           await setDoc(userRef, {
             personal: 0.00, // Claimed via onboarding tour
@@ -188,6 +224,7 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
             phoneNumber: cleanPhone,
             fullName: fullName,
             password: password, // Save for secure offline-free lookup
+            invitedBy: cleanInvitedBy,
             createdAt: new Date().toISOString()
           });
 
@@ -389,34 +426,52 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
             {/* Submission Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
               {activeTab === 'REGISTER' && (
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest pl-1">{currentLang === 'AM' ? 'ሙሉ ስም' : 'Full Name'}</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={fullName}
-                      onChange={(e) => {
-                        setFullName(e.target.value);
-                        setIsFullNameDirty(true);
-                      }}
-                      onBlur={() => setIsFullNameDirty(true)}
-                      placeholder={currentLang === 'AM' ? 'የእርስዎን ስም ያስገቡ' : 'Enter your name'}
-                      className={`w-full bg-white border ${
-                        fullNameError ? 'border-rose-500 focus:border-rose-500' : 'border-blue-50 focus:border-blue-500'
-                      } focus:bg-white p-4 pl-12 rounded-2xl text-xs font-bold text-gray-900 shadow-sm focus:outline-none transition-all`}
-                    />
-                    <User size={16} className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${fullNameError ? 'text-rose-500' : 'text-gray-400'}`} />
+                <>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest pl-1">{currentLang === 'AM' ? 'ሙሉ ስም' : 'Full Name'}</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={fullName}
+                        onChange={(e) => {
+                          setFullName(e.target.value);
+                          setIsFullNameDirty(true);
+                        }}
+                        onBlur={() => setIsFullNameDirty(true)}
+                        placeholder={currentLang === 'AM' ? 'የእርስዎን ስም ያስገቡ' : 'Enter your name'}
+                        className={`w-full bg-white border ${
+                          fullNameError ? 'border-rose-500 focus:border-rose-500' : 'border-blue-50 focus:border-blue-500'
+                        } focus:bg-white p-4 pl-12 rounded-2xl text-xs font-bold text-gray-900 shadow-sm focus:outline-none transition-all`}
+                      />
+                      <User size={16} className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${fullNameError ? 'text-rose-500' : 'text-gray-400'}`} />
+                    </div>
+                    {fullNameError && (
+                      <motion.p 
+                        initial={{ opacity: 0, y: -4 }} 
+                        animate={{ opacity: 1, y: 0 }} 
+                        className="text-[10px] font-bold text-rose-500 pl-1"
+                      >
+                        {fullNameError}
+                      </motion.p>
+                    )}
                   </div>
-                  {fullNameError && (
-                    <motion.p 
-                      initial={{ opacity: 0, y: -4 }} 
-                      animate={{ opacity: 1, y: 0 }} 
-                      className="text-[10px] font-bold text-rose-500 pl-1"
-                    >
-                      {fullNameError}
-                    </motion.p>
-                  )}
-                </div>
+
+                  <div className="space-y-1.5 animate-fade-in">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest pl-1">
+                      {currentLang === 'AM' ? 'የግብዣ ኮድ / አስተዋዋቂ (ካለ)' : 'Invitation Code / Referrer (Optional)'}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={invitedBy}
+                        onChange={(e) => setInvitedBy(e.target.value)}
+                        placeholder={currentLang === 'AM' ? 'የግብዣ ኮድ ያስገቡ' : 'Enter referral or inviter phone number'}
+                        className="w-full bg-white border border-blue-50 focus:border-blue-500 focus:bg-white p-4 pl-12 rounded-2xl text-xs font-bold text-gray-900 shadow-sm focus:outline-none transition-all"
+                      />
+                      <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                    </div>
+                  </div>
+                </>
               )}
 
               <div className="space-y-1.5">
