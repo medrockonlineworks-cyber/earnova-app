@@ -1,10 +1,10 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Lock, Mail, Phone, ChevronRight, CheckCircle2, Shield, Eye, EyeOff } from 'lucide-react';
-import { useState } from 'react';
+import { X, Lock, Mail, Phone, ChevronRight, CheckCircle2, Shield, Eye, EyeOff, User } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import WebApp from '@twa-dev/sdk';
 import { cn } from '../lib/utils';
 import { AdminCouncil } from './AdminCouncil';
-import { auth, isUserAdmin } from '../lib/firebase';
+import { auth, isUserAdmin, db, getUserDocId } from '../lib/firebase';
 
 interface AccountSettingsModalProps {
   onClose: () => void;
@@ -12,13 +12,36 @@ interface AccountSettingsModalProps {
   initialView?: SettingView;
 }
 
-type SettingView = 'MENU' | 'PASSWORD' | 'EMAIL' | 'PHONE' | 'ADMIN';
+type SettingView = 'MENU' | 'PASSWORD' | 'EMAIL' | 'PHONE' | 'ADMIN' | 'NAME';
 
 export function AccountSettingsModal({ onClose, t, initialView }: AccountSettingsModalProps) {
   const [view, setView] = useState<SettingView>(initialView || 'MENU');
   const [isSuccess, setIsSuccess] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+
+  const [newName, setNewName] = useState('');
+  const [nameError, setNameError] = useState('');
+  const [isSubmittingName, setIsSubmittingName] = useState(false);
+
+  useEffect(() => {
+    async function loadCurrentName() {
+      try {
+        const { doc, getDoc } = await import('firebase/firestore');
+        const userDocRef = doc(db, 'users', getUserDocId());
+        const docSnap = await getDoc(userDocRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data && data.fullName) {
+            setNewName(data.fullName);
+          }
+        }
+      } catch (err) {
+        console.warn('Error loading name:', err);
+      }
+    }
+    loadCurrentName();
+  }, []);
 
   const handleUpdate = () => {
     WebApp.HapticFeedback.notificationOccurred('success');
@@ -27,6 +50,27 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
       setIsSuccess(false);
       setView('MENU');
     }, 2000);
+  };
+
+  const handleUpdateName = async () => {
+    if (!newName.trim()) {
+      setNameError('Name cannot be empty!');
+      return;
+    }
+    setIsSubmittingName(true);
+    setNameError('');
+    try {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      const userDocRef = doc(db, 'users', getUserDocId());
+      await updateDoc(userDocRef, {
+        fullName: newName.trim()
+      });
+      handleUpdate();
+    } catch (err: any) {
+      setNameError(err.message || 'Error occurred while updating name.');
+    } finally {
+      setIsSubmittingName(false);
+    }
   };
 
   const renderContent = () => {
@@ -129,6 +173,31 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
             </button>
           </div>
         );
+       case 'NAME':
+        return (
+          <div className="space-y-4 p-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Name / ሙሉ ስም</label>
+              <input 
+                type="text" 
+                value={newName} 
+                onChange={(e) => setNewName(e.target.value)} 
+                placeholder="Enter new full name / ሙሉ ስም ያስገቡ" 
+                className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:border-blue-500 focus:bg-white transition-all text-xs outline-none" 
+              />
+            </div>
+            {nameError && (
+              <p className="text-[10px] font-bold text-red-500 ml-1">{nameError}</p>
+            )}
+            <button 
+              onClick={handleUpdateName} 
+              disabled={isSubmittingName}
+              className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-200 active:scale-95 transition-all disabled:opacity-50"
+            >
+              {isSubmittingName ? 'Updating...' : 'Update Name'}
+            </button>
+          </div>
+        );
       case 'ADMIN':
         return <AdminCouncil onBack={() => setView('MENU')} />;
       default:
@@ -136,6 +205,7 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
           <div className="p-6">
             <div className="space-y-3">
               {[
+                { id: 'NAME', label: 'Change Name / ስም መቀየር', desc: 'Update display name / ስምዎን ያዘምኑ', icon: User, color: 'text-amber-500', bg: 'bg-amber-100/50' },
                 { id: 'PASSWORD', label: 'Password Settings', desc: 'Secure your login', icon: Lock, color: 'text-blue-500', bg: 'bg-blue-50' },
                 { id: 'EMAIL', label: 'Email Address', desc: 'Manage your primary email', icon: Mail, color: 'text-indigo-500', bg: 'bg-indigo-50' },
                 { id: 'PHONE', label: 'Phone Number', desc: 'Registered mobile number', icon: Phone, color: 'text-emerald-500', bg: 'bg-emerald-50' },
@@ -205,7 +275,7 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
                   </button>
                 )}
                 <h2 className="text-2xl font-black italic text-gray-900 tracking-tighter uppercase leading-none">
-                  {isSuccess ? 'Success' : view === 'MENU' ? 'Account' : view}
+                  {isSuccess ? 'Success' : view === 'MENU' ? 'Account' : view === 'NAME' ? 'Change Name' : view}
                 </h2>
               </div>
               <button onClick={onClose} className="p-2 bg-gray-100 rounded-full text-gray-500 active:scale-90 transition-transform">

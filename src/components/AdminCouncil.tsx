@@ -42,7 +42,7 @@ import {
 import { cn } from '../lib/utils';
 import WebApp from '@twa-dev/sdk';
 
-type AdminTab = 'DEPOSITS' | 'WITHDRAWALS' | 'USERS' | 'CHATS' | 'TASKS' | 'ADS';
+type AdminTab = 'DEPOSITS' | 'WITHDRAWALS' | 'USERS' | 'CHATS' | 'TASKS' | 'ADS' | 'PAYMENTS';
 type UserFilter = 'ALL' | 'ACTIVE' | 'INTERN';
 
 interface AdminCouncilProps {
@@ -95,6 +95,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
   const [selectedAdFileName, setSelectedAdFileName] = useState('');
   const [isUploadingAd, setIsUploadingAd] = useState(false);
   const [deletingAdId, setDeletingAdId] = useState<string | null>(null);
+  const [confirmingAdId, setConfirmingAdId] = useState<string | null>(null);
 
   // States for user management popups & balance adjustments
   const [selectedUserForManagement, setSelectedUserForManagement] = useState<any | null>(null);
@@ -102,6 +103,13 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
   const [adjustAmountStr, setAdjustAmountStr] = useState<string>('');
   const [adminTeamTab, setAdminTeamTab] = useState<'A' | 'B' | 'C'>('A');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  // States for Editable payment methods
+  const [telebirrAccount, setTelebirrAccount] = useState('0926193920');
+  const [telebirrHolder, setTelebirrHolder] = useState('Leykun');
+  const [cbeAccount, setCbeAccount] = useState('1000419524747');
+  const [cbeHolder, setCbeHolder] = useState('Leykun jemaneh');
+  const [isUpdatingPayments, setIsUpdatingPayments] = useState(false);
 
   // Calculates Levels (A, B, C) direct & indirect subordinates
   const getActiveTeamLists = (managedUser: any) => {
@@ -282,6 +290,19 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
       console.error("Advertisements listener error:", err);
     });
 
+    // Listen for payment info
+    const unsubPaymentInfo = onSnapshot(doc(db, 'system_config', 'payment_info'), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.telebirrAccount) setTelebirrAccount(data.telebirrAccount);
+        if (data.telebirrHolder) setTelebirrHolder(data.telebirrHolder);
+        if (data.cbeAccount) setCbeAccount(data.cbeAccount);
+        if (data.cbeHolder) setCbeHolder(data.cbeHolder);
+      }
+    }, (err) => {
+      console.warn("Could not load payment settings for admin console real-time listener:", err);
+    });
+
     return () => {
       unsubRecharges();
       unsubWithdrawals();
@@ -289,6 +310,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
       unsubChats();
       unsubTasks();
       unsubAdvertisements();
+      unsubPaymentInfo();
     };
   }, [auth.currentUser]);
 
@@ -808,7 +830,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
           {/* Navigation Tabs - Horizontal Scroll on Mobile */}
           <div className="bg-[#12182B]/60 border border-white/5 rounded-[24px] p-1 mb-6 relative z-10 backdrop-blur-md overflow-x-auto no-scrollbar">
             <div className="flex gap-1 min-w-max w-full">
-              {(['DEPOSITS', 'WITHDRAWALS', 'USERS', 'CHATS', 'TASKS', 'ADS'] as AdminTab[]).map((tab) => (
+              {(['DEPOSITS', 'WITHDRAWALS', 'USERS', 'CHATS', 'TASKS', 'ADS', 'PAYMENTS'] as AdminTab[]).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -1531,24 +1553,166 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                         </div>
                         <button 
                           onClick={() => {
-                            if (window.confirm("Remove this advertisement image from displaying?")) {
+                            if (confirmingAdId === ad.id) {
                               handleDeleteAd(ad.id);
+                              setConfirmingAdId(null);
+                            } else {
+                              setConfirmingAdId(ad.id);
+                              if (WebApp?.HapticFeedback) {
+                                WebApp.HapticFeedback.impactOccurred('medium');
+                              }
                             }
                           }}
                           disabled={deletingAdId === ad.id}
-                          className="px-4 py-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 cursor-pointer disabled:opacity-50 shrink-0 self-center"
+                          className={cn(
+                            "px-4 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 cursor-pointer disabled:opacity-50 shrink-0 self-center",
+                            confirmingAdId === ad.id 
+                              ? "bg-amber-500 text-[#0f172a] hover:bg-amber-400 font-extrabold animate-pulse" 
+                              : "bg-rose-500/10 hover:bg-rose-500/20 text-rose-500"
+                          )}
                         >
                           {deletingAdId === ad.id ? (
                             <Loader2 size={12} className="animate-spin" />
+                          ) : confirmingAdId === ad.id ? (
+                            <Check size={12} />
                           ) : (
                             <Trash2 size={12} />
                           )}
-                          Remove Ad
+                          {confirmingAdId === ad.id ? "Confirm?" : "Remove Ad"}
                         </button>
                       </div>
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {activeTab === 'PAYMENTS' && (
+              <div id="admin-payments-section" className="space-y-6 relative z-10">
+                <div className="bg-[#12182B]/60 border border-white/5 rounded-[32px] p-6 backdrop-blur-md relative overflow-hidden animate-fade-in">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl" />
+                  <div className="flex items-center gap-2 mb-6">
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                      <Wallet size={18} />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black italic uppercase tracking-tighter text-white">Rechargeable Wallets Setup</h4>
+                      <p className="text-[8px] font-black tracking-widest text-gray-400 uppercase">Edit payment coordinates displayed to users in Recharge Modal</p>
+                    </div>
+                  </div>
+
+                  <form 
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      setIsUpdatingPayments(true);
+                      try {
+                        await setDoc(doc(db, 'system_config', 'payment_info'), {
+                          telebirrAccount,
+                          telebirrHolder,
+                          cbeAccount,
+                          cbeHolder,
+                          updatedAt: serverTimestamp()
+                        }, { merge: true });
+                        
+                        if (WebApp?.HapticFeedback) {
+                          WebApp.HapticFeedback.notificationOccurred('success');
+                        }
+                        setSuccessToast("Recharge accounts updated successfully!");
+                        setTimeout(() => setSuccessToast(null), 3000);
+                      } catch (err) {
+                        console.error("Error setting payment config:", err);
+                        alert("Failed to save changes: " + (err as any).message);
+                      } finally {
+                        setIsUpdatingPayments(false);
+                      }
+                    }} 
+                    className="space-y-6"
+                  >
+                    {/* Telebirr Configuration Card */}
+                    <div className="bg-white/5 border border-white/5 p-5 rounded-2xl space-y-4">
+                      <div className="flex items-center gap-2 pb-2 border-b border-white/5">
+                        <span className="w-6 h-6 rounded-md bg-emerald-500 text-white flex items-center justify-center text-[10px] font-black font-sans">TB</span>
+                        <h5 className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Telebirr Wallet Coordinates</h5>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest pl-1">Wallet Number (Account)</label>
+                          <input 
+                            type="text"
+                            value={telebirrAccount}
+                            onChange={(e) => setTelebirrAccount(e.target.value)}
+                            placeholder="e.g. 0926193920"
+                            required
+                            className="w-full px-4 py-3 bg-white/[0.03] border border-white/10 focus:border-emerald-500 rounded-xl text-xs text-white uppercase focus:outline-none transition-all placeholder:text-gray-400"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest pl-1">Account Holder Name</label>
+                          <input 
+                            type="text"
+                            value={telebirrHolder}
+                            onChange={(e) => setTelebirrHolder(e.target.value)}
+                            placeholder="e.g. Leykun"
+                            required
+                            className="w-full px-4 py-3 bg-white/[0.03] border border-white/10 focus:border-emerald-500 rounded-xl text-xs text-white uppercase focus:outline-none transition-all placeholder:text-gray-400"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* CBE Configuration Card */}
+                    <div className="bg-white/5 border border-white/5 p-5 rounded-2xl space-y-4">
+                      <div className="flex items-center gap-2 pb-2 border-b border-white/5">
+                        <span className="w-6 h-6 rounded-md bg-purple-600 text-white flex items-center justify-center text-[10px] font-black font-sans">CBE</span>
+                        <h5 className="text-[10px] font-black uppercase tracking-wider text-purple-400">Commercial Bank of Ethiopia (CBE) Birr</h5>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest pl-1">Bank Account Number</label>
+                          <input 
+                            type="text"
+                            value={cbeAccount}
+                            onChange={(e) => setCbeAccount(e.target.value)}
+                            placeholder="e.g. 1000419524747"
+                            required
+                            className="w-full px-4 py-3 bg-white/[0.03] border border-white/10 focus:border-purple-500 rounded-xl text-xs text-white uppercase focus:outline-none transition-all placeholder:text-gray-400"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest pl-1">Account Holder Name</label>
+                          <input 
+                            type="text"
+                            value={cbeHolder}
+                            onChange={(e) => setCbeHolder(e.target.value)}
+                            placeholder="e.g. Leykun Jemaneh"
+                            required
+                            className="w-full px-4 py-3 bg-white/[0.03] border border-white/10 focus:border-purple-500 rounded-xl text-xs text-white uppercase focus:outline-none transition-all placeholder:text-gray-400"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isUpdatingPayments}
+                      className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black rounded-2xl text-[10px] uppercase tracking-widest active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {isUpdatingPayments ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin" />
+                          Saving Coordinates...
+                        </>
+                      ) : (
+                        <>
+                          <Check size={12} />
+                          Save Recharge Details
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </div>
               </div>
             )}
           </div>

@@ -279,7 +279,7 @@ export function SupportCenter({ isOpen, onClose, t }: SupportCenterProps) {
                     <button 
                       onClick={() => {
                         WebApp.HapticFeedback.impactOccurred('medium');
-                        window.open('https://t.me/EARNOVA_OFFICIAL', '_blank');
+                        window.open('https://t.me/EARNOVA_OFFICIALS', '_blank');
                       }}
                       className="w-full p-4 bg-white rounded-2xl border border-blue-100 flex items-center gap-4 active:scale-95 transition-all group text-left"
                     >
@@ -288,25 +288,9 @@ export function SupportCenter({ isOpen, onClose, t }: SupportCenterProps) {
                       </div>
                       <div className="flex-1">
                         <p className="text-xs font-black text-gray-900 uppercase italic leading-none">{t('support_telegram')}</p>
-                        <p className="text-[9px] font-bold text-blue-400 uppercase mt-1">@EARNOVA_OFFICIAL</p>
+                        <p className="text-[9px] font-bold text-blue-400 uppercase mt-1">@EARNOVA_OFFICIALS</p>
                       </div>
                       <ChevronRight size={16} className="text-gray-300 group-hover:text-blue-400" />
-                    </button>
-                    <button 
-                      onClick={() => {
-                        WebApp.HapticFeedback.impactOccurred('medium');
-                        window.open('https://wa.me/251911223344', '_blank'); // Placeholder WhatsApp
-                      }}
-                      className="w-full p-4 bg-white rounded-2xl border border-emerald-100 flex items-center gap-4 active:scale-95 transition-all group text-left"
-                    >
-                      <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
-                        <Phone size={20} />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-xs font-black text-gray-900 uppercase italic leading-none">{t('support_whatsapp')}</p>
-                        <p className="text-[9px] font-bold text-emerald-400 uppercase mt-1">Fast Response</p>
-                      </div>
-                      <ChevronRight size={16} className="text-gray-300 group-hover:text-emerald-400" />
                     </button>
                   </div>
                 </div>

@@ -1,8 +1,9 @@
-import { motion, AnimatePresence } from 'motion/react';
-import { X, Users, TrendingUp, ChevronRight, UserCircle2 } from 'lucide-react';
-import { useState } from 'react';
+import { motion } from 'motion/react';
+import { X, Users, TrendingUp, UserCircle2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import WebApp from '@twa-dev/sdk';
 import { cn } from '../lib/utils';
+import { db, getUserDocId } from '../lib/firebase';
 
 interface TeamModalProps {
   onClose: () => void;
@@ -10,31 +11,100 @@ interface TeamModalProps {
   t: any;
 }
 
-const MOCK_TEAM = {
-  level1: [
-    { name: 'Abdurahman K.', date: '2026-05-10', reward: 480 },
-    { name: 'Selamawit T.', date: '2026-05-12', reward: 480 },
-    { name: 'Kalkidan B.', date: '2026-05-15', reward: 0 },
-  ],
-  level2: [
-    { name: 'Dawit M.', date: '2026-05-14', reward: 160 },
-    { name: 'Hirut S.', date: '2026-05-16', reward: 0 },
-  ],
-  level3: [
-    { name: 'Yoseph A.', date: '2026-05-17', reward: 80 },
-  ]
-};
+interface TeamMember {
+  name: string;
+  date: string;
+  reward: number;
+  status: string;
+}
 
 export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
   const [activeTab, setActiveTab] = useState<'L1' | 'L2' | 'L3'>('L1');
+  const [teamData, setTeamData] = useState<{
+    level1: TeamMember[];
+    level2: TeamMember[];
+    level3: TeamMember[];
+  }>({ level1: [], level2: [], level3: [] });
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchRealTeam() {
+      try {
+        const { collection, getDocs } = await import('firebase/firestore');
+        const querySnapshot = await getDocs(collection(db, 'users'));
+        const allUsers: any[] = [];
+        querySnapshot.forEach((docSnap) => {
+          allUsers.push({ id: docSnap.id, ...docSnap.data() });
+        });
+
+        const currentPhone = getUserDocId();
+
+        // Level 1: users where invitedBy matches current user ID or current Phone
+        const level1Users = allUsers.filter(u => {
+          const invBy = (u.invitedBy || '').trim();
+          return (invBy === currentPhone) && u.status !== 'inactive';
+        });
+
+        const level1Ids = level1Users.map(u => u.phoneNumber || u.id);
+
+        // Level 2: users invited by Level 1 users
+        const level2Users = allUsers.filter(u => {
+          const invBy = (u.invitedBy || '').trim();
+          return level1Ids.includes(invBy) && u.status !== 'inactive';
+        });
+
+        const level2Ids = level2Users.map(u => u.phoneNumber || u.id);
+
+        // Level 3: users invited by Level 2 users
+        const level3Users = allUsers.filter(u => {
+          const invBy = (u.invitedBy || '').trim();
+          return level2Ids.includes(invBy) && u.status !== 'inactive';
+        });
+
+        const mapUserToMember = (u: any) => {
+          let displayName = u.fullName || u.phoneNumber || u.id || 'Member';
+          if (/^\d+$/.test(displayName) && displayName.length >= 8) {
+            displayName = displayName.slice(0, 4) + '***' + displayName.slice(-3);
+          }
+          const rawDate = u.createdAt ? u.createdAt.split('T')[0] : 'Active';
+          return {
+            name: displayName,
+            date: rawDate,
+            reward: 0,
+            status: u.currentLevel || 'INTERN'
+          };
+        };
+
+        if (isMounted) {
+          setTeamData({
+            level1: level1Users.map(mapUserToMember),
+            level2: level2Users.map(mapUserToMember),
+            level3: level3Users.map(mapUserToMember)
+          });
+          setIsLoading(false);
+        }
+      } catch (err) {
+        console.error('Error fetching real team structure:', err);
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    fetchRealTeam();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const stats = [
-    { label: t('income_level1'), value: '3', color: 'text-blue-600' },
-    { label: t('income_level2'), value: '2', color: 'text-indigo-600' },
-    { label: t('income_level3'), value: '1', color: 'text-rose-600' },
+    { label: t('income_level1'), value: String(teamData.level1.length), color: 'text-blue-600' },
+    { label: t('income_level2'), value: String(teamData.level2.length), color: 'text-indigo-600' },
+    { label: t('income_level3'), value: String(teamData.level3.length), color: 'text-rose-600' },
   ];
 
-  const currentList = activeTab === 'L1' ? MOCK_TEAM.level1 : activeTab === 'L2' ? MOCK_TEAM.level2 : MOCK_TEAM.level3;
+  const currentList = activeTab === 'L1' ? teamData.level1 : activeTab === 'L2' ? teamData.level2 : teamData.level3;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4">
@@ -103,7 +173,12 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-10">
-          {currentList.length > 0 ? (
+          {isLoading ? (
+            <div className="py-20 text-center space-y-3">
+              <div className="w-8 h-8 border-4 border-blue-600/30 border-t-blue-600 rounded-full animate-spin mx-auto" />
+              <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Constructing Team Network...</p>
+            </div>
+          ) : currentList.length > 0 ? (
             currentList.map((member, i) => (
               <motion.div 
                 initial={{ opacity: 0, x: -10 }}
@@ -123,9 +198,9 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
                 </div>
                 <div className="text-right">
                   <p className="text-[10px] font-black text-emerald-500">
-                    {member.reward > 0 ? `+ETB ${member.reward}` : 'Active'}
+                    {member.status}
                   </p>
-                  <p className="text-[8px] font-black uppercase text-gray-400 tracking-tighter">Reward</p>
+                  <p className="text-[8px] font-black uppercase text-gray-400 tracking-tighter">Level</p>
                 </div>
               </motion.div>
             ))

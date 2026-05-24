@@ -27,7 +27,8 @@ export function InviteModal({ onClose, t, userPhone }: InviteModalProps) {
     inviteCode = rawCode || 'ERN-' + Math.floor(100000 + Math.random() * 900000).toString(36).toUpperCase();
   }
 
-  const inviteLink = `${window.location.origin}?ref=${inviteCode}`;
+  const productionOrigin = 'https://earnova-app-jrl6.vercel.app';
+  const inviteLink = `${productionOrigin}?ref=${inviteCode}`;
 
   // Dynamically compile the high-fidelity QR Code URL when inviteLink updates
   useEffect(() => {
@@ -222,9 +223,15 @@ export function InviteModal({ onClose, t, userPhone }: InviteModalProps) {
           </div>
 
           {/* Quick Notice */}
-          <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 text-center">
-            <p className="text-[10px] font-bold text-blue-800 leading-tight">
-              Share your link and build a strong Level 1-2-3 team network. Watch your dividends multiply as your team performs tasks daily!
+          <div className="p-4 bg-amber-500/5 rounded-2xl border border-amber-500/10 space-y-1.5">
+            <div className="flex items-center gap-1.5 text-amber-600">
+              <span className="text-[10.5px] font-black uppercase tracking-widest italic">💡 OPTIONAL / አማራጭ</span>
+            </div>
+            <p className="text-[10px] font-bold text-gray-550 leading-normal">
+              Note: Inviting or referring friends is completely <span className="text-gray-900 font-extrabold">OPTIONAL</span> and <span className="text-gray-900 font-extrabold">NOT mandatory</span> to unlock or perform your daily tasks. However, if you want to make <span className="text-blue-600 font-extrabold">extra passive money</span> and earn lucrative task dividends, you can share your link to get commissioned from team actions!
+            </p>
+            <p className="text-[9.5px] font-bold text-gray-400 leading-normal pl-0 border-t border-gray-100 pt-1.5 leading-tight">
+              ማሳሰቢያ፡ ጓደኞችን መጋበዝ ሙሉ በሙሉ <span className="text-gray-900 font-extrabold">አማራጭ</span> ነው፤ የየዕለት ተግባራትዎን ለመስራት ግዴታ አይደለም። ነገር ግን፣ <span className="text-blue-600 font-extrabold">ተጨማሪ ተገብሮ ገቢ</span> እና የኮሚሽን ክፍያ ማግኘት ከፈለጉ፣ ፈጣን ኮሚሽን ለመሰብሰብ ሊንክዎን ማጋራት ይችላሉ !
             </p>
           </div>
         </div>

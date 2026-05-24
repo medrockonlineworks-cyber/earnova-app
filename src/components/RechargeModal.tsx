@@ -5,7 +5,7 @@ import { X, ArrowUpCircle, Wallet, Check, Copy, Loader2 } from 'lucide-react';
 import { JOBS } from '../constants';
 import { cn } from '../lib/utils';
 import { db, auth, getUserDocId } from '../lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, onSnapshot } from 'firebase/firestore';
 
 interface RechargeModalProps {
   onClose: () => void;
@@ -21,6 +21,27 @@ export function RechargeModal({ onClose, onRecharge, initialAmount, t }: Recharg
   const [reference, setReference] = useState('');
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Dynamic payment settings loaded from Firestore
+  const [telebirrAccount, setTelebirrAccount] = useState('0926193920');
+  const [telebirrHolder, setTelebirrHolder] = useState('Leykun');
+  const [cbeAccount, setCbeAccount] = useState('1000419524747');
+  const [cbeHolder, setCbeHolder] = useState('Leykun jemaneh');
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'system_config', 'payment_info'), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.telebirrAccount) setTelebirrAccount(data.telebirrAccount);
+        if (data.telebirrHolder) setTelebirrHolder(data.telebirrHolder);
+        if (data.cbeAccount) setCbeAccount(data.cbeAccount);
+        if (data.cbeHolder) setCbeHolder(data.cbeHolder);
+      }
+    }, (err) => {
+      console.warn("Could not listen to system_config/payment_info:", err);
+    });
+    return () => unsub();
+  }, []);
 
   const handleNext = () => {
     const rechargeAmount = parseFloat(amount);
@@ -92,8 +113,8 @@ export function RechargeModal({ onClose, onRecharge, initialAmount, t }: Recharg
   };
 
   const methods = [
-    { id: 'TELEBIRR', name: 'Telebirr', color: 'bg-emerald-500', icon: 'TB', account: '0926193920', holder: 'Leykun' },
-    { id: 'CBE', name: 'CBE Birr', color: 'bg-purple-600', icon: 'CBE', account: '1000419524747', holder: 'Leykun jemaneh' },
+    { id: 'TELEBIRR', name: 'Telebirr', color: 'bg-emerald-500', icon: 'TB', account: telebirrAccount, holder: telebirrHolder },
+    { id: 'CBE', name: 'CBE Birr', color: 'bg-purple-600', icon: 'CBE', account: cbeAccount, holder: cbeHolder },
   ];
 
   const currentMethod = methods.find(m => m.id === paymentMethod)!;

@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#1E293B" />
+      <stop offset="100%" stop-color="#0E1322" />
+    </radialGradient>
+    
+    <!-- Gold Gradient for the Letter E -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B" />
+      <stop offset="50%" stop-color="#FBBF24" />
+      <stop offset="100%" stop-color="#D97706" />
+    </linearGradient>
+
+    <!-- Metallic/Cyber blue glow -->
+    <linearGradient id="cyberBlue" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1E40AF" />
+      <stop offset="100%" stop-color="#3B82F6" />
+    </linearGradient>
+
+    <!-- Drop Shadow for Letter E -->
+    <filter id="beautyGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Base Container -->
+  <rect width="512" height="512" rx="140" fill="url(#bgGrad)" />
+  
+  <!-- Outer glowing rings -->
+  <circle cx="256" cy="256" r="210" fill="none" stroke="url(#cyberBlue)" stroke-width="4" stroke-opacity="0.25" />
+  <circle cx="256" cy="256" r="190" fill="none" stroke="url(#goldGrad)" stroke-width="2" stroke-opacity="0.15" />
+
+  <!-- The stylized letter "E" representing EARNOVA, combined with a premium crown/fintech lines -->
+  <g filter="url(#beautyGlow)" transform="translate(136, 116)">
+    <!-- Main stem of E with elegant curves -->
+    <path d="M 20 20 
+             L 170 20 
+             C 180 20, 190 25, 190 35 
+             C 190 45, 180 50, 170 50 
+             L 60 50 
+             L 60 115 
+             L 150 115 
+             C 160 115, 170 120, 170 130 
+             C 170 140, 160 145, 150 145 
+             L 60 145 
+             L 60 230 
+             L 180 230 
+             C 190 230, 200 235, 200 245 
+             C 200 255, 190 260, 180 260 
+             L 20 260 
+             C 10 260, 0 250, 0 240 
+             L 0 40 
+             C 0 30, 10 20, 20 20 Z" 
+          fill="url(#goldGrad)" />
+          
+    <!-- Dynamic fintech lightning bar accent to give it a fast-earning sleek vibe -->
+    <path d="M 60 115 L 140 115 L 115 145 L 60 145 Z" fill="url(#cyberBlue)" opacity="0.8" />
+  </g>
+
+  <!-- Crown on the E to emphasize VIP status -->
+  <path d="M 206 100 
+           L 226 125 
+           L 256 95 
+           L 286 125 
+           L 306 100 
+           L 296 145 
+           L 216 145 Z" 
+        fill="url(#goldGrad)" 
+        opacity="0.9" />
+</svg>

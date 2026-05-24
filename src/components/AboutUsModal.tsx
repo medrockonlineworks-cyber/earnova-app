@@ -46,7 +46,7 @@ export function AboutUsModal({ isOpen, onClose }: AboutUsModalProps) {
                </div>
                <h4 className="text-xl font-black italic tracking-tighter mb-2">EARNOVA GLOBAL</h4>
                <p className="text-xs font-medium text-gray-500 leading-relaxed">
-                 Founded on May 23, 2026, EARNOVA is a premier digital task ecosystem providing sustainable income opportunities through micro-work and fintech innovative solutions.
+                 Founded on May 24, 2026, EARNOVA is a premier digital task ecosystem providing sustainable income opportunities through micro-work and fintech innovative solutions.
                </p>
             </div>
 

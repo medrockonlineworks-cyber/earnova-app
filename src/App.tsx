@@ -75,14 +75,38 @@ export default function App() {
   const [userStatus, setUserStatus] = useState<string>('active');
   const [userProfile, setUserProfile] = useState<{ phoneNumber?: string; fullName?: string; email?: string } | null>(null);
   const [showSupportOnSuspended, setShowSupportOnSuspended] = useState(false);
+  const [signedContracts, setSignedContracts] = useState<string[]>(() => {
+    const saved = localStorage.getItem('earnova_signed_contracts');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [investments, setInvestments] = useState<any[]>(() => {
     const saved = localStorage.getItem('user_investments');
     return saved ? JSON.parse(saved) : [];
   });
+  
+  // Custom states for high-fidelity downloadable (PWA) installation
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
+  const [showInstallGuideModal, setShowInstallGuideModal] = useState(false);
+
+  useEffect(() => {
+    const handleBeforePrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+      console.log('beforeinstallprompt event stashed successfully');
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforePrompt);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforePrompt);
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('user_investments', JSON.stringify(investments));
   }, [investments]);
+
+  useEffect(() => {
+    localStorage.setItem('earnova_signed_contracts', JSON.stringify(signedContracts));
+  }, [signedContracts]);
 
   // Live reload detection mechanism to sync update immediately for all users
   useEffect(() => {
@@ -307,6 +331,11 @@ export default function App() {
           if (data.status) {
             setUserStatus(data.status);
           }
+          if (data.signedContracts) {
+            setSignedContracts(data.signedContracts);
+          } else {
+            setSignedContracts([]);
+          }
         } else {
           setUserProfile({
             phoneNumber: userDocId,
@@ -321,6 +350,7 @@ export default function App() {
       setUserProfile(null);
       setBalance({ income: 0.00, personal: 0.00, workDeposit: 0.00 });
       setCurrentJobLevel(JobLevel.INTERN);
+      setSignedContracts([]);
       setUserStatus('active');
     }
 
@@ -444,6 +474,8 @@ export default function App() {
       logoutUser();
       localStorage.removeItem('earnova_logged_in_phone');
       localStorage.removeItem('admin_console_activated');
+      localStorage.removeItem('earnova_signed_contracts');
+      setSignedContracts([]);
       auth.signOut();
       setCurrentUser(null);
       setUserStatus('active');
@@ -564,6 +596,10 @@ export default function App() {
       return;
     }
     if (targetIdx === currentIdx) {
+      if (!signedContracts.includes(level)) {
+        setShowSigningModal({ level, deposit });
+        return;
+      }
       showNotification("This is already your active job level.", "info");
       return;
     }
@@ -615,14 +651,21 @@ export default function App() {
       }));
       setCurrentJobLevel(level);
 
+      // Add to signed contracts tracking
+      setSignedContracts(prev => {
+        if (prev.includes(level)) return prev;
+        return [...prev, level];
+      });
+
       // Update Firestore if logged in
       if (getUserDocId()) {
-        const { updateDoc, doc, increment } = await import('firebase/firestore');
+        const { updateDoc, doc, increment, arrayUnion } = await import('firebase/firestore');
         await updateDoc(doc(db, 'users', getUserDocId()), {
           personal: increment(-deposit + prevDeposit),
           income: increment(levelBonus),
           workDeposit: increment(deposit - prevDeposit),
-          currentLevel: level
+          currentLevel: level,
+          signedContracts: arrayUnion(level)
         });
       }
 
@@ -732,16 +775,48 @@ export default function App() {
 
   const handleNavClick = (page: Page) => {
     WebApp.HapticFeedback.impactOccurred('light');
+    if (page === 'TASK') {
+      const isSigned = signedContracts.includes(currentJobLevel);
+      if (!isSigned) {
+        showNotification(
+          currentLang === 'AM'
+            ? 'ተግባራትን ለመክፈት መጀመሪያ በዋናው ገጽ ላይ ያለውን የሥራ ስምምነት መፈረም አለብዎት!'
+            : 'You must sign the employment agreement for your level on the Home screen to unlock daily tasks!',
+          'info'
+        );
+        setActivePage('HOME');
+        return;
+      }
+    }
     setActivePage(page);
     if (page === 'HOME') {
       triggerAd();
     }
   };
 
+  const handleInstallApp = async () => {
+    if (WebApp?.HapticFeedback) {
+      WebApp.HapticFeedback.impactOccurred('medium');
+    }
+    if (deferredInstallPrompt) {
+      try {
+        deferredInstallPrompt.prompt();
+        const { outcome } = await deferredInstallPrompt.userChoice;
+        console.log(`User choice outcome: ${outcome}`);
+        setDeferredInstallPrompt(null);
+      } catch (err) {
+        console.warn('Error during native install prompt:', err);
+        setShowInstallGuideModal(true);
+      }
+    } else {
+      setShowInstallGuideModal(true);
+    }
+  };
+
   const renderPage = () => {
     switch (activePage) {
       case 'HOME':
-        return <HomePage currentJobLevel={currentJobLevel} onJoinJob={handleJoinJob} handleAction={handleAction} t={t} />;
+        return <HomePage currentJobLevel={currentJobLevel} onJoinJob={handleJoinJob} handleAction={handleAction} t={t} signedContracts={signedContracts} currentLang={currentLang} />;
       case 'FUND':
         return <FundPage balance={balance} investments={investments} onInvest={handleInvest} handleAction={handleAction} t={t} />;
       case 'INCOME':
@@ -757,10 +832,11 @@ export default function App() {
             t={t} 
             userPhone={userProfile?.phoneNumber || localStorage.getItem('earnova_logged_in_phone') || ''}
             fullName={userProfile?.fullName || 'Member'}
+            onInstallApp={handleInstallApp}
           />
         );
       default:
-        return <HomePage currentJobLevel={currentJobLevel} onJoinJob={handleJoinJob} handleAction={handleAction} t={t} />;
+        return <HomePage currentJobLevel={currentJobLevel} onJoinJob={handleJoinJob} handleAction={handleAction} t={t} signedContracts={signedContracts} currentLang={currentLang} />;
     }
   };
 
@@ -838,6 +914,8 @@ export default function App() {
                   auth.signOut();
                   setCurrentUser(null);
                   localStorage.removeItem('earnova_logged_in_phone');
+                  localStorage.removeItem('earnova_signed_contracts');
+                  setSignedContracts([]);
                   setUserStatus('active');
                   WebApp.HapticFeedback.impactOccurred('light');
                 }}
@@ -1014,6 +1092,89 @@ export default function App() {
             />
           </motion.div>
         )}
+        
+        {/* EARNOVA High-Fidelity Installer Guidance Overlay */}
+        {showInstallGuideModal && (
+          <div className="fixed inset-0 z-[100005] flex items-center justify-center p-6 bg-black/85 backdrop-blur-md">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 30 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 30 }}
+              className="relative w-full max-w-sm bg-[#0E1322] border border-blue-500/20 rounded-[32px] p-6 overflow-hidden text-center space-y-5 shadow-2xl"
+            >
+              {/* Accent header design */}
+              <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-blue-600 via-amber-500 to-indigo-600" />
+              
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest bg-blue-500/10 border border-blue-500/20 px-3 py-1 rounded-full">Secure Web App</span>
+                <button 
+                  onClick={() => setShowInstallGuideModal(false)}
+                  className="p-1.5 bg-white/5 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="space-y-1.5 pt-2">
+                <div className="w-16 h-16 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-xl shadow-blue-500/20">
+                  <span className="text-2xl font-black text-white italic">E</span>
+                </div>
+                <h3 className="text-lg font-black italic text-white uppercase tracking-tight pt-1 leading-none">DOWNLOAD EARNOVA APP</h3>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Install to your device for instant launch and premium access</p>
+              </div>
+
+              {/* Responsive custom instruction bento layout */}
+              <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-left space-y-4">
+                {/* Safari iOS Instructions Tab */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 bg-amber-500 text-[#090D1A] rounded-full flex items-center justify-center text-[10px] font-black font-sans shadow">1</span>
+                    <p className="text-[10px] font-black text-gray-200 uppercase tracking-wider">Apple / iOS (Safari Browser)</p>
+                  </div>
+                  <div className="pl-7 space-y-1 text-[9.5px] text-gray-400 font-bold leading-normal">
+                    <p className="flex items-start gap-1">
+                      <span className="text-amber-400">●</span> 
+                      <span>Tap the <span className="text-amber-405 font-black text-white">Share button</span> (square with upward arrow) in Safari bottom navigation.</span>
+                    </p>
+                    <p className="flex items-start gap-1">
+                      <span className="text-amber-400">●</span> 
+                      <span>Scroll the sharing options list and select <span className="text-amber-405 font-black text-white">"Add to Home Screen"</span>.</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Android / Chrome Instructions Tab */}
+                <div className="space-y-2 border-t border-white/5 pt-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-[10px] font-black font-sans shadow">2</span>
+                    <p className="text-[10px] font-black text-gray-200 uppercase tracking-wider">Android / Chrome Browser</p>
+                  </div>
+                  <div className="pl-7 space-y-1 text-[9.5px] text-gray-400 font-bold leading-normal">
+                    <p className="flex items-start gap-1">
+                      <span className="text-blue-400">●</span> 
+                      <span>Tap the menu <span className="text-white font-black">(three vertical dots)</span> in Chrome's top right header.</span>
+                    </p>
+                    <p className="flex items-start gap-1">
+                      <span className="text-blue-400">●</span> 
+                      <span>Tap <span className="text-white font-black">"Add to Home Screen"</span> or <span className="text-white font-black">"Install App"</span> and confirm.</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="space-y-2 pt-2">
+                <button 
+                  onClick={() => setShowInstallGuideModal(false)}
+                  className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-lg shadow-blue-500/20 cursor-pointer"
+                >
+                  Confirm & Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {showOnboarding && (
           <OnboardingTutorial 
             currentLang={currentLang}
@@ -1358,7 +1519,7 @@ function BannerCarousel({ t }: { t: any }) {
   );
 }
 
-function HomePage({ currentJobLevel, onJoinJob, handleAction, t }: { currentJobLevel: JobLevel, onJoinJob: (l: JobLevel, d: number) => void, handleAction: (a: string) => void, t: any }) {
+function HomePage({ currentJobLevel, onJoinJob, handleAction, t, signedContracts = [], currentLang }: { currentJobLevel: JobLevel, onJoinJob: (l: JobLevel, d: number) => void, handleAction: (a: string) => void, t: any, signedContracts?: string[], currentLang: string }) {
   return (
     <div className="px-4 space-y-6 pt-4 pb-8">
       <BannerCarousel t={t} />
@@ -1435,26 +1596,28 @@ function HomePage({ currentJobLevel, onJoinJob, handleAction, t }: { currentJobL
                       >
                         {t('btn_inaccessible_unused')}
                       </button>
-                    ) : currentJobLevel === job.level ? (
+                    ) : (signedContracts.includes(job.level)) ? (
                       <button 
                         onClick={() => handleAction(`View Job ${job.level}`)} 
                         className="mt-1 bg-emerald-500 text-white px-6 py-2 rounded-xl font-black text-xs active:scale-95 transition-transform shadow-lg shadow-emerald-100 animate-pulse-subtle"
                       >
                         {t('btn_signed')}
                       </button>
-                    ) : job.deposit > 0 ? (
-                      <button 
-                        onClick={() => onJoinJob(job.level, job.deposit)} 
-                        className="mt-1 bg-gray-900 text-white px-6 py-2 rounded-xl font-black text-xs active:scale-95 transition-transform"
-                      >
-                        {t('btn_claim')}
-                      </button>
                     ) : (
                       <button 
                         onClick={() => onJoinJob(job.level, job.deposit)} 
-                        className="mt-1 bg-blue-600 text-white px-6 py-2 rounded-xl font-black text-xs active:scale-95 transition-transform"
+                        className={cn(
+                          "mt-1 px-6 py-2 rounded-xl font-black text-xs active:scale-95 transition-transform text-white",
+                          job.level === JobLevel.INTERN 
+                            ? "bg-gradient-to-r from-amber-500 to-orange-500 shadow-md shadow-orange-100 ml-1" 
+                            : job.deposit > 0 
+                              ? "bg-gray-900" 
+                              : "bg-blue-600"
+                        )}
                       >
-                        {t('btn_claim')}
+                        {job.level === JobLevel.INTERN 
+                          ? (currentLang === 'AM' ? 'የሙከራ ደረጃ ቀላቀል ✍️' : 'Join Intern Level ✍️') 
+                          : t('btn_claim')}
                       </button>
                     )}
                   </div>
@@ -3026,14 +3189,16 @@ function ProfilePage({
   handleAction, 
   t,
   userPhone,
-  fullName
+  fullName,
+  onInstallApp
 }: { 
   balance: { income: number, personal: number, workDeposit: number }, 
   currentJobLevel: JobLevel, 
   handleAction: (a: string) => void, 
   t: any,
   userPhone: string,
-  fullName: string
+  fullName: string,
+  onInstallApp: () => void
 }) {
   const [showFeeTooltip, setShowFeeTooltip] = useState(false);
 
@@ -3170,9 +3335,36 @@ function ProfilePage({
         </div>
       </div>
 
+      {/* PWA High-Fidelity App Installer Banner */}
+      <div className="px-4">
+        <div className="relative overflow-hidden bg-gradient-to-br from-[#0B0F19] via-[#0E1322] to-[#0B0F19] rounded-3xl p-5 border border-blue-500/20 shadow-xl space-y-4">
+          {/* Subtle glowing radial background element */}
+          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-xl pointer-events-none" />
+          
+          <div className="flex items-start justify-between relative z-10">
+            <div className="space-y-1">
+              <span className="text-[8px] font-black text-amber-505 bg-amber-500/15 border border-amber-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-widest leading-none">PWA Installer</span>
+              <h3 className="text-sm font-black text-white uppercase tracking-tight italic pt-1">EARNOVA native app</h3>
+              <p className="text-[9.5px] text-gray-405 font-bold leading-relaxed max-w-[200px]">Install EARNOVA directly to your mobile home screen with fast 1-tap ecosystem access.</p>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+              <Download size={18} className="animate-pulse" />
+            </div>
+          </div>
+          
+          <button 
+            type="button"
+            onClick={onInstallApp}
+            className="w-full relative z-10 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black rounded-2xl text-[10px] uppercase tracking-widest transition-all text-center flex items-center justify-center gap-1.5 shadow-lg shadow-blue-500/10 active:scale-95 cursor-pointer"
+          >
+            Download App <Download size={12} />
+          </button>
+        </div>
+      </div>
+
       <div className="px-4 text-center">
         <p className="text-[9px] font-black italic text-blue-300 uppercase tracking-widest leading-none">
-          Date: 2026-03-09 ~ 2027-03-03
+          Date: 2026-05-24 ~ 2027-05-24
         </p>
       </div>
 
