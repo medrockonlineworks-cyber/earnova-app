@@ -25,14 +25,22 @@
   }
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 body {
   @apply antialiased;
   background-color: #f9fafb !important;
   color: #111827 !important;
   -webkit-tap-highlight-color: transparent;
   font-size: 0.85rem;
-  overflow: hidden;
-  height: 100dvh;
   /* Prevent pull-to-refresh and other overscroll effects sensitive to TMA */
   overscroll-behavior-y: none;
 }

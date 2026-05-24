@@ -853,7 +853,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen h-[100dvh] bg-[#f9fafb] text-[#111827] font-sans overflow-hidden">
+    <div className="fixed inset-0 flex flex-col bg-[#f9fafb] text-[#111827] font-sans overflow-hidden">
       <Header onAction={handleAction} currentLang={currentLang} setCurrentLang={setCurrentLang} t={t} />
       
       {/* Global Notification */}
@@ -1216,7 +1216,7 @@ function BottomNav({ activePage, setActivePage, t }: { activePage: Page, setActi
   ];
 
   return (
-    <nav className="flex-shrink-0 bg-white border-t border-gray-100 flex items-center justify-around py-2 px-1 z-50">
+    <nav className="flex-shrink-0 bg-white border-t border-gray-100 flex items-center justify-around pt-2.5 pb-[calc(10px+env(safe-area-inset-bottom,0px))] px-1 z-50 shadow-[0_-4px_16px_rgba(0,0,0,0.04)]">
       {navItems.map((item) => {
         const isActive = activePage === item.id;
         return (
