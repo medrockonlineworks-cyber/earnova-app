@@ -43,7 +43,7 @@ import { cn } from '../lib/utils';
 import WebApp from '@twa-dev/sdk';
 
 type AdminTab = 'DEPOSITS' | 'WITHDRAWALS' | 'USERS' | 'CHATS' | 'TASKS' | 'ADS' | 'PAYMENTS';
-type UserFilter = 'ALL' | 'ACTIVE' | 'INTERN';
+type UserFilter = 'ALL' | 'INTERN' | 'REGULAR';
 
 interface AdminCouncilProps {
   onBack: () => void;
@@ -115,25 +115,37 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
   const getActiveTeamLists = (managedUser: any) => {
     if (!managedUser) return { A: [], B: [], C: [] };
     
-    const managedPhone = managedUser.phoneNumber || managedUser.id;
+    const managedPhone = (managedUser.phoneNumber || '').trim();
+    const managedId = (managedUser.id || '').trim();
     
-    // Real referrals registered in Firestore (where invitedBy matches phone number)
-    const realA = users.filter(u => u.invitedBy === managedPhone && u.status !== 'inactive');
-    const realB = users.filter(u => realA.some(a => u.invitedBy === (a.phoneNumber || a.id)) && u.status !== 'inactive');
-    const realC = users.filter(u => realB.some(b => u.invitedBy === (b.phoneNumber || b.id)) && u.status !== 'inactive');
+    // Real referrals registered in Firestore (where invitedBy matches phone number or ID)
+    const realA = users.filter(u => {
+      const invBy = (u.invitedBy || '').trim();
+      return invBy && (invBy === managedPhone || invBy === managedId) && u.status !== 'inactive';
+    });
     
-    // Fallback deterministic list constructed out of OTHER active registered users
-    // to keep the dashboard highly visual and interactive even before full hierarchical trees are registered in dev.
-    const activeOthers = users.filter(u => u.id !== managedUser.id && u.status !== 'inactive');
+    const realB = users.filter(u => {
+      const invBy = (u.invitedBy || '').trim();
+      return invBy && realA.some(a => {
+        const aPhone = (a.phoneNumber || '').trim();
+        const aId = (a.id || '').trim();
+        return invBy === aPhone || invBy === aId;
+      }) && u.status !== 'inactive';
+    });
     
-    const simulatedA = activeOthers.filter((_, idx) => idx % 3 === 0);
-    const simulatedB = activeOthers.filter((_, idx) => idx % 3 === 1);
-    const simulatedC = activeOthers.filter((_, idx) => idx % 3 === 2);
+    const realC = users.filter(u => {
+      const invBy = (u.invitedBy || '').trim();
+      return invBy && realB.some(b => {
+        const bPhone = (b.phoneNumber || '').trim();
+        const bId = (b.id || '').trim();
+        return invBy === bPhone || invBy === bId;
+      }) && u.status !== 'inactive';
+    });
     
     return {
-      A: realA.length > 0 ? realA : simulatedA,
-      B: realB.length > 0 ? realB : simulatedB,
-      C: realC.length > 0 ? realC : simulatedC
+      A: realA,
+      B: realB,
+      C: realC
     };
   };
 
@@ -348,6 +360,10 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
       const text = replyText;
       setReplyText('');
       
+      const { getDoc, setDoc } = await import('firebase/firestore');
+      const chatRef = doc(db, 'chats', selectedChat);
+      const chatSnap = await getDoc(chatRef);
+      
       await addDoc(collection(db, 'chats', selectedChat, 'messages'), {
         text,
         senderId: 'admin',
@@ -357,10 +373,20 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
         chatId: selectedChat
       });
 
-      await updateDoc(doc(db, 'chats', selectedChat), {
-        lastMessage: text,
-        lastUpdated: serverTimestamp()
-      });
+      if (!chatSnap.exists()) {
+        const associatedUser = users.find(u => u.id === selectedChat || u.phoneNumber === selectedChat);
+        await setDoc(chatRef, {
+          userName: associatedUser?.fullName || 'Anonymous User',
+          lastMessage: text,
+          lastUpdated: serverTimestamp(),
+          status: 'active'
+        });
+      } else {
+        await updateDoc(chatRef, {
+          lastMessage: text,
+          lastUpdated: serverTimestamp()
+        });
+      }
 
       WebApp.HapticFeedback.impactOccurred('light');
     } catch (e) {
@@ -727,9 +753,10 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
   };
 
   const filteredUsers = users.filter(u => {
-    // 1. Filter by category
-    if (userFilter === 'ACTIVE' && u.status === 'inactive') return false;
-    if (userFilter === 'INTERN' && u.role !== 'intern' && u.currentLevel !== 'INTERN') return false;
+    // 1. Filter by category (ALL, INTERN, REGULAR)
+    const levelStr = (u.currentLevel || 'INTERN').toUpperCase();
+    if (userFilter === 'INTERN' && levelStr !== 'INTERN') return false;
+    if (userFilter === 'REGULAR' && levelStr === 'INTERN') return false;
 
     // 2. Filter by search query (case-insensitive check for Phone, Name, or ID)
     if (userSearchQuery.trim() !== '') {
@@ -853,7 +880,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
             <div className="flex flex-col sm:flex-row gap-3 mb-6 relative z-10">
               {/* Filter Tabs */}
               <div className="flex gap-1.5 flex-wrap">
-                {(['ALL', 'ACTIVE', 'INTERN'] as UserFilter[]).map((f) => (
+                {(['ALL', 'INTERN', 'REGULAR'] as UserFilter[]).map((f) => (
                   <button
                     key={f}
                     onClick={() => {
@@ -1160,10 +1187,75 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                           <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">{item.accountNumber}</p>
                         </div>
                       </div>
-                      <div className="mb-4 p-3 bg-white/5 rounded-xl border border-white/5">
-                        <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest mb-1">Account Holder</p>
-                        <p className="text-xs font-black text-white italic">{item.accountName}</p>
+                      {/* Destination account for this withdrawal */}
+                      <div className="mb-3.5 p-3.5 bg-rose-500/5 border border-rose-500/15 rounded-2xl space-y-2.5">
+                        <p className="text-[8px] font-black text-rose-400 uppercase tracking-widest leading-none">Destination Bank Account (Withdrawal Request)</p>
+                        <div className="grid grid-cols-2 gap-3 text-xs leading-none">
+                          <div>
+                            <span className="text-[8px] text-gray-400 block uppercase font-mono mt-0.5 mb-1">Target Bank Name</span>
+                            <span className="font-bold text-white uppercase italic">{item.bankName || 'N/A'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[8px] text-gray-400 block uppercase font-mono mt-0.5 mb-1">Target Account Number</span>
+                            <span className="font-mono text-amber-500 font-black">{item.accountNumber || 'N/A'}</span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-[8px] text-gray-400 block uppercase font-mono mt-0.5 mb-1">Destination Holder Name</span>
+                            <span className="font-bold text-white uppercase italic">{item.accountName || 'N/A'}</span>
+                          </div>
+                        </div>
                       </div>
+
+                      {(() => {
+                        const linkedUser = users.find(u => u.id === item.userId || u.phoneNumber === item.userId);
+                        return (
+                          <div className="space-y-3 mb-4">
+                            {/* Profile Details link */}
+                            <div className="p-3.5 bg-amber-500/5 border border-amber-500/10 rounded-2xl space-y-2.5">
+                              <p className="text-[8px] font-black text-amber-500 uppercase tracking-widest leading-none">Registered Account Profile Link</p>
+                              <div className="grid grid-cols-2 gap-3 text-xs leading-none">
+                                <div>
+                                  <span className="text-[8px] text-gray-500 block uppercase font-black tracking-tight mb-1">Registered User Name</span>
+                                  <span className="font-bold text-white uppercase italic">{linkedUser?.fullName || 'Anonymous User'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-[8px] text-gray-500 block uppercase font-black tracking-tight mb-1">Phone / Login ID</span>
+                                  <span className="font-mono text-gray-300 font-bold">{linkedUser?.phoneNumber || item.userId || 'N/A'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-[8px] text-gray-500 block uppercase font-black tracking-tight mb-1">Join Password</span>
+                                  <span className="font-mono text-amber-500 font-black">{linkedUser?.password || 'N/A'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-[8px] text-gray-500 block uppercase font-black tracking-tight mb-1">Payment Secret Pass</span>
+                                  <span className="font-mono text-pink-400 font-semibold">
+                                    {linkedUser?.bankDetails?.paymentPassword || linkedUser?.paymentPassword || 'N/A'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Registered Bank Account details */}
+                            <div className="p-3.5 bg-blue-500/5 border border-blue-500/10 rounded-2xl space-y-2.5">
+                              <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest leading-none">Registered Bank Account (Saved in Profile)</p>
+                              <div className="grid grid-cols-2 gap-3 text-xs leading-none">
+                                <div>
+                                  <span className="text-[8px] text-gray-500 block uppercase font-black tracking-tight mb-1">Registered Bank</span>
+                                  <span className="font-bold text-white uppercase italic">{linkedUser?.bankDetails?.bankName || 'Not Linked'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-[8px] text-gray-500 block uppercase font-black tracking-tight mb-1">Registered Account Number</span>
+                                  <span className="font-mono text-gray-300 font-bold">{linkedUser?.bankDetails?.accountNumber || '•••• •••• ••••'}</span>
+                                </div>
+                                <div className="col-span-2">
+                                  <span className="text-[8px] text-gray-500 block uppercase font-black tracking-tight mb-1">Registered Account Holder Name</span>
+                                  <span className="font-bold text-white uppercase italic">{linkedUser?.bankDetails?.accountName || 'Not Provided'}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                       {withdrawalFilter !== 'pending' ? (
                         <div className={cn(
                           "py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-center border font-mono w-full",
@@ -1220,10 +1312,20 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                         )}>
                           <MessageSquare size={24} />
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-sm font-black italic tracking-tighter text-white uppercase truncate">{chat.userName || chat.id.slice(0, 8)}</h4>
-                          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest truncate">{chat.lastMessage}</p>
-                        </div>
+                        {(() => {
+                          const linkedUser = users.find(u => u.id === chat.id || u.phoneNumber === chat.id);
+                          const nameVal = linkedUser?.fullName || chat.userName || 'Member';
+                          const phoneVal = linkedUser?.phoneNumber || chat.id || '';
+                          return (
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-sm font-black italic tracking-tighter text-white uppercase truncate">{nameVal}</h4>
+                              {phoneVal && (
+                                <p className="text-[9px] font-mono font-bold text-[#F59E0B] mt-0.5">{phoneVal}</p>
+                              )}
+                              <p className="text-[10px] font-medium text-gray-500 tracking-wide truncate mt-1.5">{chat.lastMessage}</p>
+                            </div>
+                          );
+                        })()}
                         <ChevronDown className="-rotate-90 text-gray-600" size={16} />
                       </button>
                     ))}
@@ -1240,9 +1342,22 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                       <button onClick={() => setSelectedChat(null)} className="text-gray-400 hover:text-white transition-colors">
                         <ArrowLeft size={18} />
                       </button>
-                      <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500">
-                        {chats.find(c => c.id === selectedChat)?.userName || 'USER SESSION'}
-                      </h4>
+                      {(() => {
+                        const activeChatId = selectedChat;
+                        const linkedUser = users.find(u => u.id === activeChatId || u.phoneNumber === activeChatId);
+                        const chatName = linkedUser?.fullName || chats.find(c => c.id === activeChatId)?.userName || 'USER SUPPORT';
+                        const chatPhone = linkedUser?.phoneNumber || activeChatId || '';
+                        return (
+                          <div className="text-center">
+                            <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500">
+                              {chatName}
+                            </h4>
+                            {chatPhone && (
+                              <p className="text-[8px] font-mono text-gray-400 mt-0.5 font-bold">{chatPhone}</p>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <div className="w-4" />
                     </div>
 
@@ -2025,12 +2140,27 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                     <p className="text-[10px] text-gray-500 font-mono">ID: {selectedUserForManagement.id}</p>
                   </div>
                 </div>
-                <button 
-                  onClick={() => setSelectedUserForManagement(null)}
-                  className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:bg-white/10 active:scale-95 transition-all text-white"
-                >
-                  <X size={16} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedChat(selectedUserForManagement.id);
+                      setActiveTab('CHATS');
+                      setSelectedUserForManagement(null);
+                      WebApp.HapticFeedback.impactOccurred('medium');
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-[#0A0F1E] rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
+                  >
+                    <MessageSquare size={12} />
+                    Chat
+                  </button>
+                  <button 
+                    onClick={() => setSelectedUserForManagement(null)}
+                    className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:bg-white/10 active:scale-95 transition-all text-white"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
               </div>
 
               {/* Scrollable Content */}
@@ -2168,7 +2298,20 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                               <p className="text-[8px] font-bold text-gray-500 mt-0.5">{sub.phoneNumber || sub.id}</p>
                             </div>
                           </div>
-                          <div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedChat(sub.id);
+                                setActiveTab('CHATS');
+                                setSelectedUserForManagement(null);
+                                WebApp.HapticFeedback.impactOccurred('medium');
+                              }}
+                              className="p-1.5 px-2 bg-amber-500 hover:bg-amber-600 text-[#0A0F1E] rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center gap-1 transition-all active:scale-95"
+                            >
+                              <MessageSquare size={9} />
+                              Chat
+                            </button>
                             <span className="text-[8px] px-1.5 py-0.5 bg-blue-500/10 text-blue-400 rounded border border-blue-500/10 font-bold uppercase">
                               {sub.currentLevel || 'INTERN'}
                             </span>

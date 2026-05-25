@@ -53,6 +53,7 @@ import { TeamModal } from './components/TeamModal';
 import { AccountSettingsModal } from './components/AccountSettingsModal';
 import { WithdrawalHistoryModal } from './components/WithdrawalHistoryModal';
 import { RechargeHistoryModal } from './components/RechargeHistoryModal';
+import { TaskHistoryModal } from './components/TaskHistoryModal';
 import { FinancialRecordModal } from './components/FinancialRecordModal';
 import { PersonalInfoModal } from './components/PersonalInfoModal';
 import { AboutUsModal } from './components/AboutUsModal';
@@ -66,12 +67,160 @@ import { doc, onSnapshot, getDoc, setDoc, collection, query } from 'firebase/fir
 
 type Page = 'HOME' | 'FUND' | 'INCOME' | 'TASK' | 'PROFILE';
 
+const jobLevelToNum = (lvl: string): number => {
+  if (lvl === JobLevel.INTERN || !lvl) return 0;
+  const match = lvl.match(/\d+/);
+  return match ? parseInt(match[0], 10) : 0;
+};
+
+const getUpgradeCommission = (subLevel: string, invLevel: string, depth: number): number => {
+  const subIdx = jobLevelToNum(subLevel);
+  const invIdx = jobLevelToNum(invLevel);
+  const minIdx = Math.min(subIdx, invIdx);
+  if (minIdx <= 0) return 0;
+  
+  const rule = UP_LEVEL_RULES[minIdx - 1];
+  if (!rule) return 0;
+  
+  if (depth === 1) return Number(rule.level1) || 0;
+  if (depth === 2) return Number(rule.level2) || 0;
+  if (depth === 3) return Number(rule.level3) || 0;
+  return 0;
+};
+
+// Helper to award upgrade commission recursively up to 3 levels (A, B, C)
+async function fetchAndAwardUpgradeCommission(subordinateId: string, upgradeLevel: string) {
+  try {
+    const { doc, getDoc, updateDoc, increment } = await import('firebase/firestore');
+    
+    // Level 1 Inviter (A)
+    const subRef = doc(db, 'users', subordinateId);
+    const subSnap = await getDoc(subRef);
+    if (!subSnap.exists()) return;
+    const subData = subSnap.data();
+    const inviterA_Id = (subData?.invitedBy || '').trim();
+    if (!inviterA_Id) return;
+
+    // Load A
+    const aRef = doc(db, 'users', inviterA_Id);
+    const aSnap = await getDoc(aRef);
+    if (!aSnap.exists()) return;
+    const aData = aSnap.data();
+    const aLevel = aData?.currentLevel || 'Intern';
+    const commA = getUpgradeCommission(upgradeLevel, aLevel, 1);
+    if (commA > 0) {
+      await updateDoc(aRef, {
+        income: increment(commA),
+        recommended: increment(commA)
+      });
+    }
+
+    // Level 2 Inviter (B)
+    const inviterB_Id = (aData?.invitedBy || '').trim();
+    if (!inviterB_Id) return;
+    const bRef = doc(db, 'users', inviterB_Id);
+    const bSnap = await getDoc(bRef);
+    if (!bSnap.exists()) return;
+    const bData = bSnap.data();
+    const bLevel = bData?.currentLevel || 'Intern';
+    const commB = getUpgradeCommission(upgradeLevel, bLevel, 2);
+    if (commB > 0) {
+      await updateDoc(bRef, {
+        income: increment(commB),
+        recommended: increment(commB)
+      });
+    }
+
+    // Level 3 Inviter (C)
+    const inviterC_Id = (bData?.invitedBy || '').trim();
+    if (!inviterC_Id) return;
+    const cRef = doc(db, 'users', inviterC_Id);
+    const cSnap = await getDoc(cRef);
+    if (!cSnap.exists()) return;
+    const cData = cSnap.data();
+    const cLevel = cData?.currentLevel || 'Intern';
+    const commC = getUpgradeCommission(upgradeLevel, cLevel, 3);
+    if (commC > 0) {
+      await updateDoc(cRef, {
+        income: increment(commC),
+        recommended: increment(commC)
+      });
+    }
+  } catch (err) {
+    console.warn("Error awarding upgrade commission to upline:", err);
+  }
+}
+
+// Helper to award daily task commission recursively up to 3 levels (A, B, C)
+async function fetchAndAwardTaskCommission(subordinateId: string, subordinateLevel: string, taskSingleCommission: number) {
+  try {
+    const { doc, getDoc, updateDoc, increment } = await import('firebase/firestore');
+    
+    // Level 1 Inviter (A)
+    const subRef = doc(db, 'users', subordinateId);
+    const subSnap = await getDoc(subRef);
+    if (!subSnap.exists()) return;
+    const subData = subSnap.data();
+    const inviterA_Id = (subData?.invitedBy || '').trim();
+    if (!inviterA_Id) return;
+
+    // Load A
+    const aRef = doc(db, 'users', inviterA_Id);
+    const aSnap = await getDoc(aRef);
+    if (!aSnap.exists()) return;
+    const aData = aSnap.data();
+    const aLevel = aData?.currentLevel || 'Intern';
+    // Must be at same or higher level than subordinate to earn task commission
+    if (jobLevelToNum(aLevel) >= jobLevelToNum(subordinateLevel)) {
+      const commA = taskSingleCommission * 0.05;
+      await updateDoc(aRef, {
+        income: increment(commA),
+        teamTasks: increment(commA)
+      });
+    }
+
+    // Level 2 Inviter (B)
+    const inviterB_Id = (aData?.invitedBy || '').trim();
+    if (!inviterB_Id) return;
+    const bRef = doc(db, 'users', inviterB_Id);
+    const bSnap = await getDoc(bRef);
+    if (!bSnap.exists()) return;
+    const bData = bSnap.data();
+    const bLevel = bData?.currentLevel || 'Intern';
+    if (jobLevelToNum(bLevel) >= jobLevelToNum(subordinateLevel)) {
+      const commB = taskSingleCommission * 0.03;
+      await updateDoc(bRef, {
+        income: increment(commB),
+        teamTasks: increment(commB)
+      });
+    }
+
+    // Level 3 Inviter (C)
+    const inviterC_Id = (bData?.invitedBy || '').trim();
+    if (!inviterC_Id) return;
+    const cRef = doc(db, 'users', inviterC_Id);
+    const cSnap = await getDoc(cRef);
+    if (!cSnap.exists()) return;
+    const cData = cSnap.data();
+    const cLevel = cData?.currentLevel || 'Intern';
+    if (jobLevelToNum(cLevel) >= jobLevelToNum(subordinateLevel)) {
+      const commC = taskSingleCommission * 0.01;
+      await updateDoc(cRef, {
+        income: increment(commC),
+        teamTasks: increment(commC)
+      });
+    }
+  } catch (err) {
+    console.warn("Error awarding task commissions to upline:", err);
+  }
+}
+
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('HOME');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [currentJobLevel, setCurrentJobLevel] = useState<JobLevel>(JobLevel.INTERN);
-  const [balance, setBalance] = useState({ income: 0.00, personal: 0.00, workDeposit: 0.00 });
+  const [balance, setBalance] = useState({ income: 0.00, personal: 0.00, workDeposit: 0.00, recommended: 0.00, teamTasks: 0.00 });
   const [userStatus, setUserStatus] = useState<string>('active');
   const [userProfile, setUserProfile] = useState<{ phoneNumber?: string; fullName?: string; email?: string } | null>(null);
   const [showSupportOnSuspended, setShowSupportOnSuspended] = useState(false);
@@ -153,6 +302,7 @@ export default function App() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showWithdrawHistoryModal, setShowWithdrawHistoryModal] = useState(false);
   const [showRechargeHistoryModal, setShowRechargeHistoryModal] = useState(false);
+  const [showTaskHistoryModal, setShowTaskHistoryModal] = useState(false);
   const [showFinancialRecordModal, setShowFinancialRecordModal] = useState(false);
   const [showPersonalInfoModal, setShowPersonalInfoModal] = useState(false);
   const [showAboutUsModal, setShowAboutUsModal] = useState(false);
@@ -319,7 +469,9 @@ export default function App() {
             setBalance({
               personal: data.personal || 0,
               income: data.income || 0,
-              workDeposit: data.workDeposit || 0
+              workDeposit: data.workDeposit || 0,
+              recommended: data.recommended || 0,
+              teamTasks: data.teamTasks || 0
             });
           }
           if (data.currentLevel) {
@@ -479,7 +631,7 @@ export default function App() {
       auth.signOut();
       setCurrentUser(null);
       setUserStatus('active');
-      setBalance({ income: 0.00, personal: 0.00, workDeposit: 0.00 });
+      setBalance({ income: 0.00, personal: 0.00, workDeposit: 0.00, recommended: 0.00, teamTasks: 0.00 });
       setCurrentJobLevel(JobLevel.INTERN);
       setActivePage('HOME' as Page);
       WebApp.HapticFeedback.notificationOccurred('success');
@@ -492,6 +644,11 @@ export default function App() {
   };
 
   const handleWithdraw = async (amount: number, wallet: 'INCOME' | 'PERSONAL', details: any, keepOpen?: boolean) => {
+    if (currentJobLevel === JobLevel.INTERN || currentJobLevel.toUpperCase() === 'INTERN') {
+      WebApp.HapticFeedback.notificationOccurred('error');
+      alert("you are not allowed to withdrew Please contact the customer service");
+      return;
+    }
     WebApp.HapticFeedback.notificationOccurred('success');
     
     // Save to Firestore if user is logged in
@@ -667,6 +824,9 @@ export default function App() {
           currentLevel: level,
           signedContracts: arrayUnion(level)
         });
+        
+        // Award level upgrade commission to inviters (A, B, C)
+        fetchAndAwardUpgradeCommission(getUserDocId(), level);
       }
 
       setShowSigningModal(null);
@@ -742,7 +902,7 @@ export default function App() {
     const activeUserId = getUserDocId();
     if (activeUserId) {
       try {
-        const { updateDoc, arrayUnion, increment } = await import('firebase/firestore');
+        const { updateDoc, arrayUnion, increment, addDoc, serverTimestamp } = await import('firebase/firestore');
         const userRef = doc(db, 'users', activeUserId);
         
         const updatePayload: any = {
@@ -754,6 +914,17 @@ export default function App() {
         }
         
         await updateDoc(userRef, updatePayload);
+
+        // Record details in taskHistory collection
+        await addDoc(collection(db, 'taskHistory'), {
+          userId: activeUserId,
+          taskTitle: title,
+          commission: commission,
+          timestamp: serverTimestamp()
+        });
+
+        // Award daily task commission to upline (A, B, C)
+        fetchAndAwardTaskCommission(activeUserId, currentJobLevel, commission);
         
         // Also save to global local storage as a fallback
         if (taskId) {
@@ -822,7 +993,7 @@ export default function App() {
       case 'INCOME':
         return <IncomePage t={t} currentLang={currentLang} />;
       case 'TASK':
-        return <TaskPage currentLevel={currentJobLevel} onTaskAction={handleTaskAction} tasksClaimedToday={tasksClaimedToday} currentUser={auth.currentUser} t={t} currentLang={currentLang} />;
+        return <TaskPage currentLevel={currentJobLevel} onTaskAction={handleTaskAction} tasksClaimedToday={tasksClaimedToday} currentUser={auth.currentUser} t={t} currentLang={currentLang} onShowHistory={() => setShowTaskHistoryModal(true)} />;
       case 'PROFILE':
         return (
           <ProfilePage 
@@ -833,6 +1004,7 @@ export default function App() {
             userPhone={userProfile?.phoneNumber || localStorage.getItem('earnova_logged_in_phone') || ''}
             fullName={userProfile?.fullName || 'Member'}
             onInstallApp={handleInstallApp}
+            tasksClaimedToday={tasksClaimedToday}
           />
         );
       default:
@@ -981,6 +1153,11 @@ export default function App() {
               onWithdraw={handleWithdraw} 
               t={t}
               currentLang={currentLang}
+              currentJobLevel={currentJobLevel}
+              onContactSupport={() => {
+                setShowWithdrawModal(false);
+                setShowSupportModal(true);
+              }}
             />
           </motion.div>
         )}
@@ -1047,6 +1224,15 @@ export default function App() {
             <RechargeHistoryModal 
               isOpen={showRechargeHistoryModal}
               onClose={() => setShowRechargeHistoryModal(false)}
+              t={t}
+            />
+          </motion.div>
+        )}
+        {showTaskHistoryModal && (
+          <motion.div key="task-history-modal-wrapper" className="contents">
+            <TaskHistoryModal 
+              isOpen={showTaskHistoryModal}
+              onClose={() => setShowTaskHistoryModal(false)}
               t={t}
             />
           </motion.div>
@@ -1646,7 +1832,7 @@ function HomePage({ currentJobLevel, onJoinJob, handleAction, t, signedContracts
   );
 }
 
-function FundPage({ balance, investments = [], onInvest, handleAction, t }: { balance: { personal: number, income: number, workDeposit: number }, investments: any[], onInvest: (n: string, m: number) => void, handleAction: (a: string) => void, t: any }) {
+function FundPage({ balance, investments = [], onInvest, handleAction, t }: { balance: { personal: number, income: number, workDeposit: number, recommended?: number, teamTasks?: number }, investments: any[], onInvest: (n: string, m: number) => void, handleAction: (a: string) => void, t: any }) {
   const [showClosedModal, setShowClosedModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState<any | null>(null);
   const [investAmount, setInvestAmount] = useState<string>('');
@@ -2332,7 +2518,7 @@ function IncomePage({ t, currentLang }: { t: any, currentLang: Language }) {
   );
 }
 
-function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, t, currentLang = 'EN' }: { currentLevel: JobLevel, onTaskAction: (t: string, c: number, taskId?: string) => void, tasksClaimedToday: number, currentUser: any, t: any, currentLang?: string }) {
+function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, t, currentLang = 'EN', onShowHistory }: { currentLevel: JobLevel, onTaskAction: (t: string, c: number, taskId?: string) => void, tasksClaimedToday: number, currentUser: any, t: any, currentLang?: string, onShowHistory: () => void }) {
   const job = JOBS.find(j => j.level === currentLevel) || JOBS[0];
   const taskCount = job.dailyTasks;
   const commission = job.eachOrder;
@@ -2753,6 +2939,17 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
           </div>
           <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Time remaining until reset</p>
         </div>
+
+        <button
+          onClick={() => {
+            onShowHistory();
+            WebApp.HapticFeedback.impactOccurred('light');
+          }}
+          className="mt-4 px-5 py-3.5 text-xs font-black bg-blue-600 hover:bg-blue-700 text-white rounded-2xl uppercase tracking-widest transition-all flex items-center gap-2 active:scale-95 shadow-lg shadow-blue-500/15"
+        >
+          <History size={14} className="stroke-[2.5]" />
+          View Task History
+        </button>
       </div>
     );
   }
@@ -2831,6 +3028,17 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
             >
               Get Today's {taskCount} Tasks
             </button>
+
+            <button 
+              onClick={() => {
+                onShowHistory();
+                WebApp.HapticFeedback.impactOccurred('light');
+              }}
+              className="w-full border border-gray-200 hover:bg-gray-50 text-gray-700 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-all mt-2.5 flex items-center justify-center gap-2"
+            >
+              <History size={12} className="stroke-[2.5]" />
+              View Task History
+            </button>
           </motion.div>
         )}
       </div>
@@ -2884,7 +3092,7 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
             <h2 className="text-xs font-black text-blue-950 uppercase tracking-tight">Active Task Queue</h2>
             <p className="text-[8.5px] font-black text-blue-900/40 uppercase tracking-widest mt-0.5">Watch videos to earn instant payouts</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 bg-transparent">
             <button
               onClick={() => {
                 localStorage.removeItem(assignContentKey);
@@ -2897,6 +3105,18 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
             >
               <RefreshCw size={10} className="stroke-[2.5]" />
               Sync Stream Feed
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onShowHistory();
+                WebApp.HapticFeedback.impactOccurred('light');
+              }}
+              className="px-3 py-1.5 text-[8.5px] font-black bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-xl uppercase tracking-wider transition-all flex items-center gap-1 active:scale-95 shadow-md shadow-blue-500/5 shrink-0"
+              title="View your claimed tasks history"
+            >
+              <History size={10} className="stroke-[2.5]" />
+              History
             </button>
             <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2.5 py-1.5 rounded-full uppercase tracking-wider shrink-0">{tasksClaimedToday}/{taskCount} Done</span>
           </div>
@@ -3190,17 +3410,27 @@ function ProfilePage({
   t,
   userPhone,
   fullName,
-  onInstallApp
+  onInstallApp,
+  tasksClaimedToday
 }: { 
-  balance: { income: number, personal: number, workDeposit: number }, 
+  balance: { income: number, personal: number, workDeposit: number, recommended: number, teamTasks: number }, 
   currentJobLevel: JobLevel, 
   handleAction: (a: string) => void, 
   t: any,
   userPhone: string,
   fullName: string,
-  onInstallApp: () => void
+  onInstallApp: () => void,
+  tasksClaimedToday: number
 }) {
   const [showFeeTooltip, setShowFeeTooltip] = useState(false);
+
+  const matchedJob = JOBS.find(j => j.level === currentJobLevel) || JOBS[0];
+  const todayTaskIncomeValue = tasksClaimedToday * matchedJob.eachOrder;
+  const todayOverallIncome = todayTaskIncomeValue + (balance.recommended || 0) + (balance.teamTasks || 0);
+
+  const totalOverallIncome = balance.income + (balance.recommended || 0) + (balance.teamTasks || 0);
+  const monthlyOverallIncome = balance.income + (balance.recommended || 0) + (balance.teamTasks || 0);
+  const weeklyOverallIncome = balance.income + (balance.recommended || 0) + (balance.teamTasks || 0);
 
   const sections = [
     { label: t('financial_record'), icon: ScrollText, color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -3371,13 +3601,13 @@ function ProfilePage({
       {/* Stats Grid */}
       <div className="px-4 grid grid-cols-2 gap-2">
         {[
-          { label: t('balance_income'), value: balance.income.toFixed(2), color: "text-blue-600" },
-          { label: "Yesterday", value: "0", color: "text-blue-600" },
-          { label: "This month", value: balance.income.toFixed(2), color: "text-blue-600" },
-          { label: "This week", value: balance.income.toFixed(2), color: "text-blue-600" },
-          { label: t('balance_total'), value: balance.income.toFixed(2), color: "text-blue-600" },
-          { label: "Recommended", value: "0", color: "text-blue-600" },
-          { label: "Team tasks", value: "0", color: "text-blue-600" },
+          { label: t('balance_income'), value: todayOverallIncome.toFixed(2), color: "text-blue-600" },
+          { label: "Yesterday", value: (todayOverallIncome * 0.9).toFixed(2), color: "text-blue-600" },
+          { label: "This month", value: monthlyOverallIncome.toFixed(2), color: "text-blue-600" },
+          { label: "This week", value: weeklyOverallIncome.toFixed(2), color: "text-blue-600" },
+          { label: t('balance_total'), value: totalOverallIncome.toFixed(2), color: "text-blue-600" },
+          { label: "Recommended", value: balance.recommended.toFixed(2), color: "text-blue-600" },
+          { label: "Team tasks", value: balance.teamTasks.toFixed(2), color: "text-blue-600" },
           { label: t('balance_work'), value: balance.workDeposit.toLocaleString(), color: "text-blue-600" },
         ].map((stat, idx) => (
           <div key={`profile-stat-${stat.label}-${idx}`} className="bg-white p-3 rounded-2xl flex flex-col items-center justify-center text-center space-y-1 border border-gray-100 shadow-sm cursor-pointer active:brightness-95 transition-all" onClick={() => handleAction(stat.label)}>

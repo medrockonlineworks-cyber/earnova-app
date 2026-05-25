@@ -13,9 +13,11 @@ interface WithdrawModalProps {
   onWithdraw: (amount: number, wallet: 'INCOME' | 'PERSONAL', details: any, keepOpen?: boolean) => void;
   t: any;
   currentLang?: 'EN' | 'AM' | 'OR' | 'SO';
+  currentJobLevel?: string;
+  onContactSupport?: () => void;
 }
 
-export function WithdrawModal({ incomeBalance, personalBalance, onClose, onWithdraw, t, currentLang = 'EN' }: WithdrawModalProps) {
+export function WithdrawModal({ incomeBalance, personalBalance, onClose, onWithdraw, t, currentLang = 'EN', currentJobLevel, onContactSupport }: WithdrawModalProps) {
   const [amount, setAmount] = useState('');
   const [wallet, setWallet] = useState<'INCOME' | 'PERSONAL'>('INCOME');
   const [bankName, setBankName] = useState('');
@@ -25,6 +27,8 @@ export function WithdrawModal({ incomeBalance, personalBalance, onClose, onWithd
   const [verifyPassword, setVerifyPassword] = useState('');
   const [showPaymentPassword, setShowPaymentPassword] = useState(false);
   const [showVerifyPassword, setShowVerifyPassword] = useState(false);
+  
+  const isIntern = currentJobLevel?.toUpperCase() === 'INTERN' || currentJobLevel === 'Intern';
   
   // Sequential wizard steps: REGISTER -> CHOOSE_WALLET -> CHOOSE_ACCOUNT -> INPUT_PASSWORD -> SUCCESS
   const [step, setStep] = useState<'REGISTER' | 'CHOOSE_WALLET' | 'CHOOSE_ACCOUNT' | 'INPUT_PASSWORD' | 'SUCCESS'>('REGISTER');
@@ -202,7 +206,48 @@ export function WithdrawModal({ incomeBalance, personalBalance, onClose, onWithd
 
         {/* Wizard Step Body */}
         <div className="flex-1 overflow-y-auto">
-          {step === 'REGISTER' ? (
+          {isIntern ? (
+            <div className="p-8 flex flex-col items-center justify-center text-center space-y-6">
+              <div className="w-20 h-20 bg-rose-50 border border-rose-150 rounded-full flex items-center justify-center text-rose-600 animate-bounce">
+                <Lock size={40} className="stroke-[2.5]" />
+              </div>
+              <div className="space-y-3">
+                <h3 className="text-sm font-black text-rose-900 uppercase tracking-tight">Withdrawal Restricted</h3>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-normal leading-relaxed">
+                  you are not allowed to withdrew Please contact the customer service
+                </p>
+                {currentLang === 'AM' && (
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-wide">
+                    ገንዘብ ማውጣት አይፈቀድልዎትም። እባክዎ የደንበኛ አገልግሎትን ያነጋግሩ
+                  </p>
+                )}
+              </div>
+              <div className="w-full space-y-3 pt-4">
+                <button
+                  onClick={() => {
+                    WebApp.HapticFeedback.impactOccurred('medium');
+                    if (onContactSupport) {
+                      onContactSupport();
+                    } else {
+                      onClose();
+                    }
+                  }}
+                  className="w-full bg-rose-600 hover:bg-rose-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all text-center block"
+                >
+                  Contact Support
+                </button>
+                <button
+                  onClick={() => {
+                    WebApp.HapticFeedback.impactOccurred('light');
+                    onClose();
+                  }}
+                  className="w-full bg-gray-100 hover:bg-gray-200 text-gray-500 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest active:scale-95 transition-all text-center block"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          ) : step === 'REGISTER' ? (
             <form key="withdraw-step-reg" onSubmit={handleRegister} className="p-6 space-y-5">
               <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex items-center gap-3">
                 <div className="p-2 bg-blue-600 text-white rounded-lg shrink-0">

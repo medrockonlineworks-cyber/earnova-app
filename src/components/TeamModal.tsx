@@ -68,11 +68,13 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
             displayName = displayName.slice(0, 4) + '***' + displayName.slice(-3);
           }
           const rawDate = u.createdAt ? u.createdAt.split('T')[0] : 'Active';
+          const lvl = (u.currentLevel || 'INTERN').toUpperCase();
           return {
             name: displayName,
             date: rawDate,
             reward: 0,
-            status: u.currentLevel || 'INTERN'
+            status: lvl === 'INTERN' ? 'Intern' : 'Regular User',
+            rawLevel: lvl
           };
         };
 
@@ -197,10 +199,15 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] font-black text-emerald-500">
+                  <p className={cn(
+                    "text-[10px] font-black uppercase text-right leading-none",
+                    member.status === 'Intern' ? 'text-amber-500' : 'text-blue-500'
+                  )}>
                     {member.status}
                   </p>
-                  <p className="text-[8px] font-black uppercase text-gray-400 tracking-tighter">Level</p>
+                  <p className="text-[8px] font-black uppercase text-gray-400 mt-1 tracking-tighter leading-none text-right">
+                    {member.rawLevel}
+                  </p>
                 </div>
               </motion.div>
             ))
