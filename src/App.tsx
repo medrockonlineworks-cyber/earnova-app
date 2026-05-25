@@ -331,7 +331,7 @@ export default function App() {
   const [ads, setAds] = useState<any[]>([]);
   const [showAdPopup, setShowAdPopup] = useState(false);
   const [activeAd, setActiveAd] = useState<any>(null);
-  const [adCountdown, setAdCountdown] = useState(3);
+  const [adCountdown, setAdCountdown] = useState(10);
 
   // Synchronize advertisements list from Firestore
   useEffect(() => {
@@ -354,12 +354,12 @@ export default function App() {
       if (showAdPopup) return; // Already showing, don't overlap
       const randomIndex = Math.floor(Math.random() * activeAds.length);
       setActiveAd(activeAds[randomIndex]);
-      setAdCountdown(3);
+      setAdCountdown(10);
       setShowAdPopup(true);
     }
   };
 
-  // 3-second automatic fadeout countdown timer
+  // 10-second automatic fadeout countdown timer
   useEffect(() => {
     let timer: any;
     if (showAdPopup && adCountdown > 0) {
@@ -649,6 +649,53 @@ export default function App() {
       alert("you are not allowed to withdrew Please contact the customer service");
       return;
     }
+
+    // 1. Local storage safeguard check
+    const todayString = new Date().toDateString();
+    const localLastWithdraw = localStorage.getItem('earnova_last_withdraw_date');
+    if (localLastWithdraw === todayString) {
+      WebApp.HapticFeedback.notificationOccurred('error');
+      alert("daily withdrew finished Please contact customer service");
+      return;
+    }
+
+    // 2. Real-time Firestore database verification check
+    if (getUserDocId()) {
+      try {
+        const { collection, getDocs, query, where } = await import('firebase/firestore');
+        const { db } = await import('./lib/firebase');
+        
+        const q = query(collection(db, 'withdrawals'), where('userId', '==', getUserDocId()));
+        const querySnapshot = await getDocs(q);
+        
+        const localToday = new Date();
+        const localTodayStr = `${localToday.getFullYear()}-${localToday.getMonth() + 1}-${localToday.getDate()}`;
+        
+        let hasWithdrawnToday = false;
+        querySnapshot.forEach((docSnap) => {
+          const wData = docSnap.data();
+          if (wData.timestamp) {
+            const wDate = wData.timestamp.toDate ? wData.timestamp.toDate() : new Date(wData.timestamp);
+            if (wDate) {
+              const wDateStr = `${wDate.getFullYear()}-${wDate.getMonth() + 1}-${wDate.getDate()}`;
+              if (wDateStr === localTodayStr) {
+                hasWithdrawnToday = true;
+              }
+            }
+          }
+        });
+
+        if (hasWithdrawnToday) {
+          localStorage.setItem('earnova_last_withdraw_date', todayString);
+          WebApp.HapticFeedback.notificationOccurred('error');
+          alert("daily withdrew finished Please contact customer service");
+          return;
+        }
+      } catch (error) {
+        console.error("Error checking daily withdrawal limit:", error);
+      }
+    }
+
     WebApp.HapticFeedback.notificationOccurred('success');
     
     // Save to Firestore if user is logged in
@@ -669,9 +716,14 @@ export default function App() {
         await updateDoc(doc(db, 'users', getUserDocId()), {
           [wallet.toLowerCase()]: increment(-amount)
         });
+
+        // Record locally to prevent fast re-submissions
+        localStorage.setItem('earnova_last_withdraw_date', todayString);
       } catch (error) {
         console.error("Error saving withdrawal:", error);
       }
+    } else {
+      localStorage.setItem('earnova_last_withdraw_date', todayString);
     }
 
     if (wallet === 'INCOME') {
@@ -1435,7 +1487,7 @@ export default function App() {
                   <h4 className="text-xs font-black text-white uppercase tracking-tight italic">Ecosystem Partner Promotion</h4>
                 </div>
 
-                <div className="flex gap-3 pt-1">
+                <div className="pt-1">
                   <button 
                     onClick={() => {
                       setShowAdPopup(false);
@@ -1444,26 +1496,10 @@ export default function App() {
                         WebApp.HapticFeedback.impactOccurred('light');
                       }
                     }}
-                    className="flex-1 py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 cursor-pointer font-sans"
+                    className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 rounded-2xl text-[9.5px] font-black uppercase tracking-widest transition-all active:scale-95 cursor-pointer font-sans"
                   >
                     Cancel
                   </button>
-                  
-                  <a 
-                    href={activeAd.imageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => {
-                      setShowAdPopup(false);
-                      setActiveAd(null);
-                      if (WebApp?.HapticFeedback) {
-                        WebApp.HapticFeedback.impactOccurred('light');
-                      }
-                    }}
-                    className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-[#0A0F1E] font-black rounded-2xl text-[9px] uppercase tracking-widest transition-all text-center flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 active:scale-95"
-                  >
-                    Details <ExternalLink size={10} />
-                  </a>
                 </div>
               </div>
             </motion.div>
