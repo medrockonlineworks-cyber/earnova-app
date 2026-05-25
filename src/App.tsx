@@ -846,10 +846,12 @@ export default function App() {
     }
   };
 
-  const handleInvest = async (name: string, mAmount: number) => {
+  const handleInvest = async (name: string, mAmount: number, wallet: 'PERSONAL' | 'INCOME' = 'PERSONAL') => {
     WebApp.HapticFeedback.impactOccurred('medium');
-    if (balance.personal < mAmount) {
-      showNotification(`Insufficient balance in personal wallet to invest!`, 'error');
+    const walletKey = wallet === 'PERSONAL' ? 'personal' : 'income';
+    const currentBalance = balance[walletKey] || 0;
+    if (currentBalance < mAmount) {
+      showNotification(`Insufficient balance in ${wallet === 'PERSONAL' ? 'personal' : 'income'} wallet to invest!`, 'error');
       return;
     }
 
@@ -865,7 +867,8 @@ export default function App() {
         dailyProfit: dailyProfit,
         term: term,
         startDate: new Date().toISOString().split('T')[0],
-        status: 'active'
+        status: 'active',
+        fundedBy: wallet
       };
 
       const updatedInvestments = [...investments, newInvest];
@@ -874,19 +877,19 @@ export default function App() {
       setInvestments(updatedInvestments);
       setBalance(prev => ({
         ...prev,
-        personal: Math.max(0, prev.personal - mAmount)
+        [walletKey]: Math.max(0, (prev[walletKey] || 0) - mAmount)
       }));
 
       // Update Firestore
       if (getUserDocId()) {
         const { updateDoc, doc, increment } = await import('firebase/firestore');
         await updateDoc(doc(db, 'users', getUserDocId()), {
-          personal: increment(-mAmount),
+          [walletKey]: increment(-mAmount),
           investments: updatedInvestments
         });
       }
 
-      showNotification(`Successfully invested ETB ${mAmount.toLocaleString()} in ${name}!`, 'success');
+      showNotification(`Successfully invested ETB ${mAmount.toLocaleString()} in ${name} using ${wallet === 'PERSONAL' ? 'Personal' : 'Income'} wallet!`, 'success');
     } catch (e) {
       console.error(e);
       showNotification("Error completing investment", "error");
@@ -1832,13 +1835,15 @@ function HomePage({ currentJobLevel, onJoinJob, handleAction, t, signedContracts
   );
 }
 
-function FundPage({ balance, investments = [], onInvest, handleAction, t }: { balance: { personal: number, income: number, workDeposit: number, recommended?: number, teamTasks?: number }, investments: any[], onInvest: (n: string, m: number) => void, handleAction: (a: string) => void, t: any }) {
+function FundPage({ balance, investments = [], onInvest, handleAction, t }: { balance: { personal: number, income: number, workDeposit: number, recommended?: number, teamTasks?: number }, investments: any[], onInvest: (n: string, m: number, w: 'PERSONAL' | 'INCOME') => void, handleAction: (a: string) => void, t: any }) {
   const [showClosedModal, setShowClosedModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState<any | null>(null);
   const [investAmount, setInvestAmount] = useState<string>('');
+  const [selectedWallet, setSelectedWallet] = useState<'PERSONAL' | 'INCOME'>('PERSONAL');
 
   const selectedAmt = parseFloat(investAmount) || 0;
-  const isSufficient = showConfirmModal ? balance.personal >= selectedAmt : false;
+  const currentWalletBalance = selectedWallet === 'PERSONAL' ? balance.personal : (balance.income || 0);
+  const isSufficient = showConfirmModal ? currentWalletBalance >= selectedAmt : false;
   const isMinMet = showConfirmModal ? selectedAmt >= showConfirmModal.minDeposit : false;
   const dailyIncome = showConfirmModal ? selectedAmt * (showConfirmModal.dailyProfit / 100) : 0;
   const cycleIncome = showConfirmModal ? dailyIncome * showConfirmModal.term : 0;
@@ -1848,19 +1853,14 @@ function FundPage({ balance, investments = [], onInvest, handleAction, t }: { ba
     .filter(inv => inv.status !== 'closed')
     .reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
 
-  // Pre-loaded/Mock completed records plus any user-defined ones that are closed
-  const defaultClosedRecords = [
-    { id: 'C910283', name: 'Wealth Fund 2', term: 14, amount: 2000, dailyProfit: 3.0, startDate: '2026-05-01', closedDate: '2026-05-15', earnings: 840 },
-    { id: 'C910012', name: 'Wealth Fund 1', term: 7, amount: 1000, dailyProfit: 1.5, startDate: '2026-05-01', closedDate: '2026-05-08', earnings: 105 }
-  ];
-
   const userClosedRecords = investments.filter(inv => inv.status === 'closed');
-  const allClosedRecords = [...userClosedRecords, ...defaultClosedRecords];
+  const allClosedRecords = userClosedRecords;
 
   const handleOpenInvest = (inv: any) => {
     WebApp.HapticFeedback.impactOccurred('medium');
     setShowConfirmModal(inv);
     setInvestAmount(inv.minDeposit.toString());
+    setSelectedWallet('PERSONAL');
   };
 
   const handleConfirmInvestment = (e: any) => {
@@ -1871,13 +1871,14 @@ function FundPage({ balance, investments = [], onInvest, handleAction, t }: { ba
       alert(`Minimum deposit is ETB ${showConfirmModal.minDeposit}`);
       return;
     }
-    if (balance.personal < amount) {
+    const currentBalanceVal = selectedWallet === 'PERSONAL' ? balance.personal : (balance.income || 0);
+    if (currentBalanceVal < amount) {
       WebApp.HapticFeedback.notificationOccurred('error');
-      alert(`Insufficient balance. Please recharge your personal wallet!`);
+      alert(`Insufficient balance in ${selectedWallet === 'PERSONAL' ? 'Personal' : 'Income'} Wallet.`);
       return;
     }
 
-    onInvest(showConfirmModal.name, amount);
+    onInvest(showConfirmModal.name, amount, selectedWallet);
     setShowConfirmModal(null);
   };
 
@@ -2119,14 +2120,51 @@ function FundPage({ balance, investments = [], onInvest, handleAction, t }: { ba
               </div>
 
               <div className="p-5 space-y-4 overflow-y-auto flex-1 max-h-[52vh]">
-                <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100 flex justify-between items-center">
-                  <div>
-                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Personal Balance</p>
-                    <p className="text-lg font-black text-slate-800">ETB {balance.personal.toLocaleString()}</p>
+                <div className="space-y-1.5 animate-fade-in">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Select Funding Wallet</label>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {/* Personal Wallet Option */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        WebApp.HapticFeedback.impactOccurred('light');
+                        setSelectedWallet('PERSONAL');
+                      }}
+                      className={cn(
+                        "p-3 rounded-2xl border-2 text-left transition-all relative overflow-hidden flex flex-col justify-between h-[72px]",
+                        selectedWallet === 'PERSONAL'
+                          ? "bg-blue-500/5 border-blue-600 shadow-sm"
+                          : "bg-white border-slate-100 opacity-70 hover:opacity-100 hover:border-slate-200"
+                      )}
+                    >
+                      <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Personal</span>
+                      <span className="text-sm font-black text-slate-800 leading-tight">ETB {balance.personal.toLocaleString()}</span>
+                      {selectedWallet === 'PERSONAL' && (
+                        <div className="absolute right-2.5 top-2.5 w-1.5 h-1.5 bg-blue-600 rounded-full" />
+                      )}
+                    </button>
+
+                    {/* Income Wallet Option */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        WebApp.HapticFeedback.impactOccurred('light');
+                        setSelectedWallet('INCOME');
+                      }}
+                      className={cn(
+                        "p-3 rounded-2xl border-2 text-left transition-all relative overflow-hidden flex flex-col justify-between h-[72px]",
+                        selectedWallet === 'INCOME'
+                          ? "bg-emerald-500/5 border-emerald-500 shadow-sm"
+                          : "bg-white border-slate-100 opacity-70 hover:opacity-100 hover:border-slate-200"
+                      )}
+                    >
+                      <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Income</span>
+                      <span className="text-sm font-black text-slate-800 leading-tight">ETB {(balance.income || 0).toLocaleString()}</span>
+                      {selectedWallet === 'INCOME' && (
+                        <div className="absolute right-2.5 top-2.5 w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                      )}
+                    </button>
                   </div>
-                  <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-1 rounded-xl font-black uppercase tracking-wider">
-                    Wallet
-                  </span>
                 </div>
 
                 <div className="space-y-1.5">
