@@ -61,6 +61,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [isActivated, setIsActivated] = useState(() => {
     const isAdmin = isUserAdmin();
     return isAdmin || localStorage.getItem('admin_console_activated') === 'true';
@@ -640,10 +641,77 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
   const handleRejectWithdrawal = async (withdrawalId: string) => {
     try {
       setProcessingId(withdrawalId);
-      await updateDoc(doc(db, 'withdrawals', withdrawalId), { status: 'rejected' });
+      WebApp.HapticFeedback.impactOccurred('medium');
+
+      const { doc: firestoreDoc, getDoc, updateDoc, increment } = await import('firebase/firestore');
+      const wRef = firestoreDoc(db, 'withdrawals', withdrawalId);
+      const wSnap = await getDoc(wRef);
+      if (!wSnap.exists()) {
+        console.error("Withdrawal record not found");
+        return;
+      }
+
+      const wData = wSnap.data();
+      if (wData.status === 'rejected') {
+        console.warn("Withdrawal is already rejected");
+        return;
+      }
+      if (wData.status === 'approved') {
+        console.warn("Withdrawal is already approved");
+        return;
+      }
+
+      const userId = wData.userId;
+      const amount = Number(wData.amount) || 0;
+      const wallet = (wData.wallet || 'INCOME').toUpperCase(); // INCOME or PERSONAL
+
+      // Update withdrawal status to rejected
+      await updateDoc(wRef, { status: 'rejected' });
+
+      // Return the amount to user's wallet (either income or personal)
+      if (userId && amount > 0) {
+        const userRef = firestoreDoc(db, 'users', userId);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const walletFieldName = wallet.toLowerCase(); // 'income' or 'personal'
+          await updateDoc(userRef, {
+            [walletFieldName]: increment(amount)
+          });
+          console.log(`Successfully returned ${amount} to user ${userId}'s ${walletFieldName} wallet`);
+        } else {
+          console.warn(`User ${userId} not found, could not return withdrawal funds`);
+        }
+      }
+
       WebApp.HapticFeedback.notificationOccurred('success');
     } catch (error) {
       console.error("Rejection error:", error);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleDeleteRecharge = async (rechargeId: string) => {
+    try {
+      setProcessingId(rechargeId);
+      await deleteDoc(doc(db, 'recharges', rechargeId));
+      setConfirmDeleteId(null);
+      WebApp.HapticFeedback.notificationOccurred('success');
+    } catch (error) {
+      console.error("Delete recharge error:", error);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleDeleteWithdrawal = async (withdrawalId: string) => {
+    try {
+      setProcessingId(withdrawalId);
+      await deleteDoc(doc(db, 'withdrawals', withdrawalId));
+      setConfirmDeleteId(null);
+      WebApp.HapticFeedback.notificationOccurred('success');
+    } catch (error) {
+      console.error("Delete withdrawal error:", error);
     } finally {
       setProcessingId(null);
     }
@@ -1111,13 +1179,36 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                       )}
 
                       {rechargeFilter !== 'pending' ? (
-                        <div className={cn(
-                          "py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-center border font-mono w-full",
-                          (item.status || 'pending').toLowerCase() === 'approved'
-                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                            : "bg-rose-500/10 border-rose-500/20 text-rose-500"
-                        )}>
-                          Status: {item.status.toUpperCase()}
+                        <div className="space-y-2">
+                          <div className={cn(
+                            "py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-center border font-mono w-full",
+                            (item.status || 'pending').toLowerCase() === 'approved'
+                              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                              : "bg-rose-500/10 border-rose-500/20 text-rose-500"
+                          )}>
+                            Status: {item.status.toUpperCase()}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              WebApp.HapticFeedback.impactOccurred('medium');
+                              if (confirmDeleteId === item.id) {
+                                handleDeleteRecharge(item.id);
+                              } else {
+                                setConfirmDeleteId(item.id);
+                                setTimeout(() => setConfirmDeleteId(prev => prev === item.id ? null : prev), 4000);
+                              }
+                            }}
+                            className={cn(
+                              "w-full py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all text-center",
+                              confirmDeleteId === item.id
+                                ? "bg-rose-600 text-white animate-pulse"
+                                : "bg-white/5 hover:bg-[#EF4444]/10 text-gray-400 hover:text-rose-400 border border-white/5 hover:border-rose-500/30"
+                            )}
+                          >
+                            <Trash2 size={12} className="shrink-0" />
+                            {confirmDeleteId === item.id ? "Confirm Permanently Delete?" : "Delete Record"}
+                          </button>
                         </div>
                       ) : (
                         <div className="flex gap-2 w-full">
@@ -1194,6 +1285,21 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                           <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">{item.accountNumber}</p>
                         </div>
                       </div>
+
+                      {/* Income Wallet Tax Breakdown Box */}
+                      {((item.wallet || '').toUpperCase() === 'INCOME') && (
+                        <div className="mb-3.5 p-3.5 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center justify-between">
+                          <div>
+                            <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">Income Tax Deduction (10%)</p>
+                            <p className="text-[8px] text-gray-400 uppercase tracking-widest leading-none">Standard Admin Fee Deducted</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] font-bold text-gray-400 font-mono">Tax: -ETB {(item.amount * 0.1).toFixed(0)}</p>
+                            <p className="text-xs font-black text-emerald-400 italic mt-0.5">Net Payable: ETB {(item.amount * 0.9).toFixed(0)}</p>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Destination account for this withdrawal */}
                       <div className="mb-3.5 p-3.5 bg-rose-500/5 border border-rose-500/15 rounded-2xl space-y-2.5">
                         <p className="text-[8px] font-black text-rose-400 uppercase tracking-widest leading-none">Destination Bank Account (Withdrawal Request)</p>
@@ -1264,13 +1370,36 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                         );
                       })()}
                       {withdrawalFilter !== 'pending' ? (
-                        <div className={cn(
-                          "py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-center border font-mono w-full",
-                          (item.status || 'pending').toLowerCase() === 'approved'
-                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                            : "bg-rose-500/10 border-rose-500/20 text-rose-500"
-                        )}>
-                          Status: {item.status.toUpperCase()}
+                        <div className="space-y-2">
+                          <div className={cn(
+                            "py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-center border font-mono w-full",
+                            (item.status || 'pending').toLowerCase() === 'approved'
+                              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                              : "bg-rose-500/10 border-rose-500/20 text-rose-500"
+                          )}>
+                            Status: {item.status.toUpperCase()}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              WebApp.HapticFeedback.impactOccurred('medium');
+                              if (confirmDeleteId === item.id) {
+                                handleDeleteWithdrawal(item.id);
+                              } else {
+                                setConfirmDeleteId(item.id);
+                                setTimeout(() => setConfirmDeleteId(prev => prev === item.id ? null : prev), 4000);
+                              }
+                            }}
+                            className={cn(
+                              "w-full py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all text-center",
+                              confirmDeleteId === item.id
+                                ? "bg-rose-600 text-white animate-pulse"
+                                : "bg-white/5 hover:bg-[#EF4444]/10 text-gray-400 hover:text-rose-400 border border-white/5 hover:border-rose-500/30"
+                            )}
+                          >
+                            <Trash2 size={12} className="shrink-0" />
+                            {confirmDeleteId === item.id ? "Confirm Permanently Delete?" : "Delete Record"}
+                          </button>
                         </div>
                       ) : (
                         <div className="flex gap-2 w-full">
