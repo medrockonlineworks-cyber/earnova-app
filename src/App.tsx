@@ -3237,7 +3237,12 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
                 </div>
 
                 {/* Video Player Box */}
-                <div className="aspect-video w-full bg-slate-950 rounded-2xl border border-blue-100/50 overflow-hidden relative group flex items-center justify-center">
+                <div className={cn(
+                  "bg-slate-950 rounded-2xl border border-blue-100/50 overflow-hidden relative group flex items-center justify-center shadow-lg transition-all duration-300",
+                  isTikTokUrl(activeWatchTask.url) || activeWatchTask.url.includes('/shorts/')
+                    ? "aspect-[9/16] w-[260px] md:w-[280px] mx-auto shadow-rose-500/5"
+                    : "aspect-video w-full shadow-blue-500/5"
+                )}>
                   {isYouTubeUrl(activeWatchTask.url) && getYouTubeEmbedUrl(activeWatchTask.url) ? (
                     <div className="absolute inset-0 w-full h-full overflow-hidden">
                       <iframe 
@@ -3256,21 +3261,41 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
                       <div className="absolute top-[28%] bottom-[28%] right-0 w-[15%] bg-transparent z-10 pointer-events-auto cursor-default" />
                     </div>
                   ) : isTikTokUrl(activeWatchTask.url) && getTikTokEmbedUrl(activeWatchTask.url) ? (
-                    <iframe 
-                      src={getTikTokEmbedUrl(activeWatchTask.url)} 
-                      title={activeWatchTask.title}
-                      className="w-full h-full"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
-                      allowFullScreen
-                    />
+                    <div className="absolute inset-0 w-full h-full overflow-hidden">
+                      <iframe 
+                        src={getTikTokEmbedUrl(activeWatchTask.url)} 
+                        title={activeWatchTask.title}
+                        className="absolute w-[114%] h-[114%] -top-[7%] -left-[7%] pointer-events-auto"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                        allowFullScreen
+                      />
+                      {/* Top Overlay blocking TikTok profile header and links */}
+                      <div className="absolute top-0 left-0 right-0 h-[28%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                      {/* Bottom Overlay blocking TikTok watermark and footer links */}
+                      <div className="absolute bottom-0 left-0 right-0 h-[28%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                      {/* Left Overlay blocking any other sidebar info */}
+                      <div className="absolute top-[28%] bottom-[28%] left-0 w-[18%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                      {/* Right Overlay blocking TikTok interaction sidebar (likes, profile icon, comments, share) */}
+                      <div className="absolute top-[28%] bottom-[28%] right-0 w-[24%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                    </div>
                   ) : isVimeoUrl(activeWatchTask.url) && getVimeoEmbedUrl(activeWatchTask.url) ? (
-                    <iframe 
-                      src={getVimeoEmbedUrl(activeWatchTask.url)} 
-                      title={activeWatchTask.title}
-                      className="w-full h-full"
-                      allow="autoplay; fullscreen; picture-in-picture" 
-                      allowFullScreen
-                    />
+                    <div className="absolute inset-0 w-full h-full overflow-hidden">
+                      <iframe 
+                        src={getVimeoEmbedUrl(activeWatchTask.url)} 
+                        title={activeWatchTask.title}
+                        className="absolute w-[114%] h-[114%] -top-[7%] -left-[7%] pointer-events-auto"
+                        allow="autoplay; fullscreen; picture-in-picture" 
+                        allowFullScreen
+                      />
+                      {/* Top Overlay blocking Vimeo share, title, follow, and avatar links */}
+                      <div className="absolute top-0 left-0 right-0 h-[28%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                      {/* Bottom Overlay blocking Vimeo dashboard, logo, settings */}
+                      <div className="absolute bottom-0 left-0 right-0 h-[28%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                      {/* Left Overlay */}
+                      <div className="absolute top-[28%] bottom-[28%] left-0 w-[18%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                      {/* Right Overlay blocking logo and watermark */}
+                      <div className="absolute top-[28%] bottom-[28%] right-0 w-[18%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                    </div>
                   ) : isDirectVideoUrl(activeWatchTask.url) ? (
                     <video 
                       src={activeWatchTask.url}

@@ -739,10 +739,17 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
     window.location.reload();
   };
 
+  const adminCount = users.filter(u => u.role === 'admin').length || 2;
+  const regularCount = users.filter(u => {
+    if (u.role === 'admin') return false;
+    const levelStr = (u.currentLevel || 'INTERN').toUpperCase();
+    return levelStr !== 'INTERN';
+  }).length;
+
   const stats = [
-    { label: 'Total Users', value: users.length || 42, color: 'text-white' },
-    { label: 'Admins', value: 2, color: 'text-amber-500' },
-    { label: 'Regular Users', value: users.length ? users.filter(u => u.role === 'user').length : 40, color: 'text-blue-400' }
+    { label: 'Total Users', value: users.length || 38, color: 'text-white' },
+    { label: 'Admins', value: adminCount, color: 'text-amber-500' },
+    { label: 'Regular Users', value: users.length ? regularCount : 36, color: 'text-blue-400' }
   ];
 
   const handleExit = () => {
@@ -2006,7 +2013,12 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
               </div>
 
               {/* Player Area */}
-              <div className="aspect-video w-full rounded-2xl overflow-hidden bg-black/50 border border-white/5 flex items-center justify-center relative">
+              <div className={cn(
+                "bg-slate-950 rounded-2xl border border-white/5 overflow-hidden relative group flex items-center justify-center shadow-lg transition-all duration-300",
+                isTikTokUrl(previewVideoUrl) || previewVideoUrl.includes('/shorts/')
+                  ? "aspect-[9/16] w-[260px] mx-auto"
+                  : "aspect-video w-full"
+              )}>
                 {isYouTubeUrl(previewVideoUrl) && getYouTubeEmbedUrl(previewVideoUrl) ? (
                   <div className="absolute inset-0 w-full h-full overflow-hidden">
                     <iframe
@@ -2014,30 +2026,54 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                       title="YouTube Video Preview"
                       frameBorder="0"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      className="w-[106%] h-[106%] -mt-[2%] -ml-[3%]"
+                      className="absolute w-[114%] h-[114%] -top-[7%] -left-[7%] pointer-events-auto"
                     />
                     {/* Top Overlay blocking YouTube links and title clickout */}
-                    <div className="absolute top-0 left-0 right-0 h-[15%] bg-transparent z-10 pointer-events-auto cursor-default" />
-                    {/* Bottom-right Overlay blocking YouTube logo linkout */}
-                    <div className="absolute bottom-0 right-0 w-[25%] h-[15%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                    <div className="absolute top-0 left-0 right-0 h-[28%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                    {/* Bottom Overlay blocking controls, progress bar, logo, settings */}
+                    <div className="absolute bottom-0 left-0 right-0 h-[28%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                    {/* Left Overlay blocking any other sidebar info */}
+                    <div className="absolute top-[28%] bottom-[28%] left-0 w-[15%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                    {/* Right Overlay blocking watermark and logos */}
+                    <div className="absolute top-[28%] bottom-[28%] right-0 w-[15%] bg-transparent z-10 pointer-events-auto cursor-default" />
                   </div>
                 ) : isTikTokUrl(previewVideoUrl) && getTikTokEmbedUrl(previewVideoUrl) ? (
-                  <iframe
-                    src={getTikTokEmbedUrl(previewVideoUrl)}
-                    title="TikTok Video Preview"
-                    frameBorder="0"
-                    allowFullScreen
-                    className="w-full h-full"
-                  />
+                  <div className="absolute inset-0 w-full h-full overflow-hidden">
+                    <iframe
+                      src={getTikTokEmbedUrl(previewVideoUrl)}
+                      title="TikTok Video Preview"
+                      frameBorder="0"
+                      allowFullScreen
+                      className="absolute w-[114%] h-[114%] -top-[7%] -left-[7%] pointer-events-auto"
+                    />
+                    {/* Top Overlay blocking TikTok profile header and links */}
+                    <div className="absolute top-0 left-0 right-0 h-[28%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                    {/* Bottom Overlay blocking TikTok watermark and footer links */}
+                    <div className="absolute bottom-0 left-0 right-0 h-[28%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                    {/* Left Overlay blocking any other sidebar info */}
+                    <div className="absolute top-[28%] bottom-[28%] left-0 w-[18%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                    {/* Right Overlay blocking TikTok interaction sidebar (likes, profile icon, comments, share) */}
+                    <div className="absolute top-[28%] bottom-[28%] right-0 w-[24%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                  </div>
                 ) : isVimeoUrl(previewVideoUrl) && getVimeoEmbedUrl(previewVideoUrl) ? (
-                  <iframe
-                    src={getVimeoEmbedUrl(previewVideoUrl)}
-                    title="Vimeo Video Preview"
-                    frameBorder="0"
-                    allow="autoplay; fullscreen; picture-in-picture"
-                    allowFullScreen
-                    className="w-full h-full"
-                  />
+                  <div className="absolute inset-0 w-full h-full overflow-hidden">
+                    <iframe
+                      src={getVimeoEmbedUrl(previewVideoUrl)}
+                      title="Vimeo Video Preview"
+                      frameBorder="0"
+                      allow="autoplay; fullscreen; picture-in-picture"
+                      allowFullScreen
+                      className="absolute w-[114%] h-[114%] -top-[7%] -left-[7%] pointer-events-auto"
+                    />
+                    {/* Top Overlay blocking Vimeo share, title, follow, and avatar links */}
+                    <div className="absolute top-0 left-0 right-0 h-[28%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                    {/* Bottom Overlay blocking Vimeo dashboard, logo, settings */}
+                    <div className="absolute bottom-0 left-0 right-0 h-[28%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                    {/* Left Overlay */}
+                    <div className="absolute top-[28%] bottom-[28%] left-0 w-[18%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                    {/* Right Overlay blocking logo and watermark */}
+                    <div className="absolute top-[28%] bottom-[28%] right-0 w-[18%] bg-transparent z-10 pointer-events-auto cursor-default" />
+                  </div>
                 ) : isDirectVideoUrl(previewVideoUrl) ? (
                   <video 
                     src={previewVideoUrl} 
