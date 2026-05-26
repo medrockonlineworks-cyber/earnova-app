@@ -2671,6 +2671,73 @@ function IncomePage({ t, currentLang }: { t: any, currentLang: Language }) {
   );
 }
 
+const DEFAULT_FALLBACK_VIDEO_TASKS = [
+  {
+    id: 'earnova-def-ad-01',
+    title: 'Earnova Smart Investment Portfolio Allocation Strategy',
+    url: 'https://www.youtube.com/watch?v=gT_PccP-Fq0',
+    category: 'VIDEO WATCH',
+    commission: 5.0,
+    dbSource: true
+  },
+  {
+    id: 'earnova-def-ad-02',
+    title: 'Understanding Compound Interest and Daily Accumulation',
+    url: 'https://www.youtube.com/watch?v=pyG4f7627vU',
+    category: 'VIDEO WATCH',
+    commission: 5.0,
+    dbSource: true
+  },
+  {
+    id: 'earnova-def-ad-03',
+    title: 'Asset Allocation and Passive Income Guide',
+    url: 'https://www.youtube.com/watch?v=SfPH7X7Vv1s',
+    category: 'VIDEO WATCH',
+    commission: 5.0,
+    dbSource: true
+  },
+  {
+    id: 'earnova-def-ad-04',
+    title: 'Global Financial Management & Mutual Funds Tutorial',
+    url: 'https://www.youtube.com/watch?v=zR6zN6e4z_k',
+    category: 'VIDEO WATCH',
+    commission: 5.0,
+    dbSource: true
+  },
+  {
+    id: 'earnova-def-ad-05',
+    title: 'Building Long Term Wealth via High-Yield Streams',
+    url: 'https://www.youtube.com/watch?v=Vz_91gM9eMo',
+    category: 'VIDEO WATCH',
+    commission: 5.0,
+    dbSource: true
+  },
+  {
+    id: 'earnova-def-ad-06',
+    title: 'Effective Money Saving and Smart Budgeting Mechanics',
+    url: 'https://www.youtube.com/watch?v=pAnJitE72g4',
+    category: 'VIDEO WATCH',
+    commission: 5.0,
+    dbSource: true
+  },
+  {
+    id: 'earnova-def-ad-07',
+    title: 'Introduction to Blockchain & Decentralized Smart Ledgers',
+    url: 'https://www.youtube.com/watch?v=yubzJw0uiE4',
+    category: 'VIDEO WATCH',
+    commission: 5.0,
+    dbSource: true
+  },
+  {
+    id: 'earnova-def-ad-08',
+    title: 'The Blueprint for Personal Finance and Retirement Planning',
+    url: 'https://www.youtube.com/watch?v=9vjN2gNsc6U',
+    category: 'VIDEO WATCH',
+    commission: 5.0,
+    dbSource: true
+  }
+];
+
 function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, t, currentLang = 'EN', onShowHistory }: { currentLevel: JobLevel, onTaskAction: (t: string, c: number, taskId?: string) => void, tasksClaimedToday: number, currentUser: any, t: any, currentLang?: string, onShowHistory: () => void }) {
   const job = JOBS.find(j => j.level === currentLevel) || JOBS[0];
   const taskCount = job.dailyTasks;
@@ -2853,11 +2920,9 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
       matchedDbTasks = dbTasks;
     }
 
+    // Ultimate fallback: if absolutely no tasks are present in the system, load premium pre-allocated tasks so users are never blocked
     if (matchedDbTasks.length === 0) {
-      alert(currentLang === 'AM' 
-        ? 'በአስተዳዳሪው የተጫነ ምንም የቪዲዮ ስራ የለም። እባክዎ አስተዳዳሪውን ያነጋግሩ ወይም ቆይተው እንደገና ይሞክሩ።' 
-        : 'There are no video tasks uploaded by the administrator in the system. Please wait for the admin to publish video tasks.');
-      return;
+      matchedDbTasks = DEFAULT_FALLBACK_VIDEO_TASKS;
     }
 
     setIsAllocating(true);
@@ -2917,11 +2982,14 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
         // 2. If we need more to meet the daily taskCount quota, cyclically pull from all available level tasks starting from the oldest (index 0)
         // This satisfies: "if there is no unseen video repeat the first day video and continued like this"
         let cycleIndex = 0;
-        while (results.length < taskCount && matchedDbTasks.length > 0) {
+        let loopSafety = 0;
+        const maxSafety = taskCount * 10;
+        while (results.length < taskCount && matchedDbTasks.length > 0 && loopSafety < maxSafety) {
+          loopSafety++;
           const t = matchedDbTasks[cycleIndex % matchedDbTasks.length];
           // Try to avoid adding duplicate tasks in the same daily allocation slot if we have enough available
           const alreadyAdded = results.some(r => r.baseTaskId === t.id);
-          if (!alreadyAdded || results.length >= matchedDbTasks.length) {
+          if (!alreadyAdded || results.length >= matchedDbTasks.length || loopSafety > matchedDbTasks.length) {
             results.push({
               id: `${t.id}-slot-${results.length}`,
               baseTaskId: t.id,
