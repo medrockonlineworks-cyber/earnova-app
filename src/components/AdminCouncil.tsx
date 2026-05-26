@@ -23,7 +23,8 @@ import {
   Star,
   ExternalLink,
   Search,
-  Image
+  Image,
+  RefreshCw
 } from 'lucide-react';
 import { db, auth, handleFirestoreError, OperationType, isUserAdmin, getUserDocId } from '../lib/firebase';
 import { 
@@ -31,6 +32,7 @@ import {
   query, 
   where, 
   onSnapshot, 
+  getDocs,
   doc, 
   updateDoc,
   setDoc,
@@ -43,7 +45,7 @@ import { cn } from '../lib/utils';
 import WebApp from '@twa-dev/sdk';
 import { compressImage } from '../lib/imageCompressor';
 
-type AdminTab = 'DEPOSITS' | 'WITHDRAWALS' | 'USERS' | 'CHATS' | 'TASKS' | 'ADS' | 'PAYMENTS';
+type AdminTab = 'DEPOSITS' | 'WITHDRAWALS' | 'USERS' | 'TASKS' | 'ADS' | 'PAYMENTS';
 type UserFilter = 'ALL' | 'INTERN' | 'REGULAR';
 
 interface AdminCouncilProps {
@@ -243,69 +245,47 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
     setLoading(false);
   }, []);
 
-  useEffect(() => {
+  const fetchAdminData = async () => {
     if (!isActivated && !isUserAdmin()) return;
 
     setError(null);
     setLoading(true);
 
-    // Listen for all recharges
-    const qRecharges = query(collection(db, 'recharges'));
-    const unsubRecharges = onSnapshot(qRecharges, (snapshot) => {
-      setRecharges(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      console.error("Recharge listener error:", err);
-      setError("Permission Denied: You do not have admin privileges.");
-    });
+    try {
+      // 1. Fetch all recharges
+      const qRecharges = query(collection(db, 'recharges'));
+      const rechargeSnap = await getDocs(qRecharges);
+      setRecharges(rechargeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-    // Listen for all withdrawals
-    const qWithdrawals = query(collection(db, 'withdrawals'));
-    const unsubWithdrawals = onSnapshot(qWithdrawals, (snapshot) => {
-      setWithdrawals(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      console.error("Withdrawal listener error:", err);
-      setError("Permission Denied: You do not have admin privileges.");
-    });
+      // 2. Fetch all withdrawals
+      const qWithdrawals = query(collection(db, 'withdrawals'));
+      const withdrawSnap = await getDocs(qWithdrawals);
+      setWithdrawals(withdrawSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-    // Listen for users
-    const qUsers = query(collection(db, 'users'));
-    const unsubUsers = onSnapshot(qUsers, (snapshot) => {
-      setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
-    }, (err) => {
-      console.error("Users listener error:", err);
-      setLoading(false);
-    });
+      // 3. Fetch all registered users
+      const qUsers = query(collection(db, 'users'));
+      const usersSnap = await getDocs(qUsers);
+      setUsers(usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-    // Listen for chats
-    const qChats = query(collection(db, 'chats'), orderBy('lastUpdated', 'desc'));
-    const unsubChats = onSnapshot(qChats, (snapshot) => {
-      setChats(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      console.error("Chats listener error:", err);
-      try {
-        handleFirestoreError(err, OperationType.LIST, 'chats');
-      } catch (e) {}
-    });
+      // 4. Fetch all chats
+      const qChats = query(collection(db, 'chats'), orderBy('lastUpdated', 'desc'));
+      const chatsSnap = await getDocs(qChats);
+      setChats(chatsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-    // Listen for tasks
-    const qTasks = query(collection(db, 'tasks'));
-    const unsubTasks = onSnapshot(qTasks, (snapshot) => {
-      setCreatedTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      console.error("Tasks listener error:", err);
-    });
+      // 5. Fetch custom video task uploads
+      const qTasks = query(collection(db, 'tasks'));
+      const tasksSnap = await getDocs(qTasks);
+      setCreatedTasks(tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-    // Listen for advertisements
-    const qAdvertisements = query(collection(db, 'advertisements'));
-    const unsubAdvertisements = onSnapshot(qAdvertisements, (snapshot) => {
-      setAdvertisements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      console.error("Advertisements listener error:", err);
-    });
+      // 6. Fetch all uploaded ads
+      const qAdvertisements = query(collection(db, 'advertisements'));
+      const adsSnap = await getDocs(qAdvertisements);
+      setAdvertisements(adsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-    // Listen for payment info
-    const unsubPaymentInfo = onSnapshot(doc(db, 'system_config', 'payment_info'), (snap) => {
+      // 7. Get payment settings
+      const { getDoc } = await import('firebase/firestore');
+      const docRef = doc(db, 'system_config', 'payment_info');
+      const snap = await getDoc(docRef);
       if (snap.exists()) {
         const data = snap.data();
         if (data.telebirrAccount) setTelebirrAccount(data.telebirrAccount);
@@ -313,20 +293,24 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
         if (data.cbeAccount) setCbeAccount(data.cbeAccount);
         if (data.cbeHolder) setCbeHolder(data.cbeHolder);
       }
-    }, (err) => {
-      console.warn("Could not load payment settings for admin console real-time listener:", err);
-    });
+    } catch (err: any) {
+      console.error("Error loading administrative data collections:", err);
+      const errMsg = err?.message || err?.toString() || "";
+      if (errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('exhausted') || errMsg.toLowerCase().includes('limit')) {
+        setError("Database daily limit reached (Firestore Quota Exceeded). Please upgrade your Firebase plan or wait 24 hours to reload.");
+      } else if (errMsg.toLowerCase().includes('permission') || errMsg.toLowerCase().includes('denied')) {
+        setError("Permission Denied: Make sure your account has high-privilege access rules enabled.");
+      } else {
+        setError(`Failed to read dataset: ${errMsg}`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return () => {
-      unsubRecharges();
-      unsubWithdrawals();
-      unsubUsers();
-      unsubChats();
-      unsubTasks();
-      unsubAdvertisements();
-      unsubPaymentInfo();
-    };
-  }, [auth.currentUser]);
+  useEffect(() => {
+    fetchAdminData();
+  }, [auth.currentUser, isActivated]);
 
   useEffect(() => {
     if (!selectedChat) {
@@ -874,6 +858,14 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
 
         <div className="flex gap-1.5">
           <button 
+            onClick={fetchAdminData}
+            title="Refresh Data"
+            disabled={loading}
+            className={`w-10 h-10 ${loading ? 'opacity-50' : 'active:scale-90'} bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center transition-all text-emerald-500`}
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          </button>
+          <button 
             onClick={handleExit}
             className="w-10 h-10 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center justify-center active:scale-90 transition-transform text-rose-500"
           >
@@ -886,9 +878,15 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
       </div>
 
       {error ? (
-        <div className="py-20 text-center">
+        <div className="py-20 text-center px-4 max-w-sm mx-auto">
             <AlertCircle className="mx-auto text-rose-500 mb-4" size={40} />
-            <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">{error}</p>
+            <p className="text-sm font-bold text-gray-400 uppercase tracking-widest leading-relaxed mb-6">{error}</p>
+            <button 
+              onClick={fetchAdminData}
+              className="px-6 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-2xl active:scale-95 transition-all text-xs tracking-widest uppercase shadow-lg shadow-blue-500/20"
+            >
+              Try Reconnecting
+            </button>
         </div>
       ) : !isActivated ? (
         <div className="min-h-[50vh] flex flex-col items-center justify-center relative">
@@ -933,7 +931,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
           {/* Navigation Tabs - Horizontal Scroll on Mobile */}
           <div className="bg-[#12182B]/60 border border-white/5 rounded-[24px] p-1 mb-6 relative z-10 backdrop-blur-md overflow-x-auto no-scrollbar">
             <div className="flex gap-1 min-w-max w-full">
-              {(['DEPOSITS', 'WITHDRAWALS', 'USERS', 'CHATS', 'TASKS', 'ADS', 'PAYMENTS'] as AdminTab[]).map((tab) => (
+              {(['DEPOSITS', 'WITHDRAWALS', 'USERS', 'TASKS', 'ADS', 'PAYMENTS'] as AdminTab[]).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -1433,115 +1431,8 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
               </div>
             )}
 
-            {activeTab === 'CHATS' && (
-              <div className="space-y-4">
-                {!selectedChat ? (
-                  <div className="space-y-3">
-                    {chats.map(chat => (
-                      <button 
-                        key={chat.id}
-                        onClick={() => setSelectedChat(chat.id)}
-                        className="w-full bg-[#12182B]/60 border border-white/5 rounded-[32px] p-5 flex items-center gap-4 backdrop-blur-md text-left active:scale-[0.98] transition-all"
-                      >
-                        <div className={cn(
-                          "w-14 h-14 rounded-2xl flex items-center justify-center",
-                          chat.status === 'active' ? "bg-amber-500/20 text-amber-500" : "bg-gray-800 text-gray-500"
-                        )}>
-                          <MessageSquare size={24} />
-                        </div>
-                        {(() => {
-                          const linkedUser = users.find(u => u.id === chat.id || u.phoneNumber === chat.id);
-                          const nameVal = linkedUser?.fullName || chat.userName || 'Member';
-                          const phoneVal = linkedUser?.phoneNumber || chat.id || '';
-                          return (
-                            <div className="flex-1 min-w-0">
-                              <h4 className="text-sm font-black italic tracking-tighter text-white uppercase truncate">{nameVal}</h4>
-                              {phoneVal && (
-                                <p className="text-[9px] font-mono font-bold text-[#F59E0B] mt-0.5">{phoneVal}</p>
-                              )}
-                              <p className="text-[10px] font-medium text-gray-500 tracking-wide truncate mt-1.5">{chat.lastMessage}</p>
-                            </div>
-                          );
-                        })()}
-                        <ChevronDown className="-rotate-90 text-gray-600" size={16} />
-                      </button>
-                    ))}
-                    {chats.length === 0 && (
-                      <div className="py-20 text-center opacity-20 uppercase font-black text-[10px] tracking-widest">
-                        No active support sessions
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="bg-[#12182B]/60 border border-white/5 rounded-[32px] overflow-hidden flex flex-col h-[50vh] backdrop-blur-md">
-                    {/* Chat Header */}
-                    <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                      <button onClick={() => setSelectedChat(null)} className="text-gray-400 hover:text-white transition-colors">
-                        <ArrowLeft size={18} />
-                      </button>
-                      {(() => {
-                        const activeChatId = selectedChat;
-                        const linkedUser = users.find(u => u.id === activeChatId || u.phoneNumber === activeChatId);
-                        const chatName = linkedUser?.fullName || chats.find(c => c.id === activeChatId)?.userName || 'USER SUPPORT';
-                        const chatPhone = linkedUser?.phoneNumber || activeChatId || '';
-                        return (
-                          <div className="text-center">
-                            <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500">
-                              {chatName}
-                            </h4>
-                            {chatPhone && (
-                              <p className="text-[8px] font-mono text-gray-400 mt-0.5 font-bold">{chatPhone}</p>
-                            )}
-                          </div>
-                        );
-                      })()}
-                      <div className="w-4" />
-                    </div>
 
-                    {/* Messages */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                      {chatMessages.map((msg, idx) => (
-                        <div key={msg.id || idx} className={cn(
-                          "flex",
-                          msg.sender === 'admin' ? "justify-end" : "justify-start"
-                        )}>
-                          <div className={cn(
-                            "max-w-[85%] p-3 rounded-2xl text-[11px] font-bold leading-relaxed",
-                            msg.sender === 'admin' 
-                              ? "bg-amber-500 text-[#0A0F1E] rounded-tr-none" 
-                              : "bg-white/5 text-white border border-white/10 rounded-tl-none"
-                          )}>
-                            {msg.text}
-                            <p className={cn(
-                              "text-[8px] mt-1 font-black uppercase opacity-50 text-right",
-                              msg.sender === 'admin' ? "text-[#0A0F1E]" : "text-gray-500"
-                            )}>{msg.time}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
 
-                    {/* Reply Input */}
-                    <div className="p-3 border-t border-white/5 bg-black/20 flex gap-2">
-                       <input 
-                          type="text"
-                          value={replyText}
-                          onChange={(e) => setReplyText(e.target.value)}
-                          onKeyPress={(e) => e.key === 'Enter' && handleSendReply()}
-                          placeholder="Type reply..."
-                          className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs font-bold text-white focus:border-amber-500 outline-none transition-colors"
-                       />
-                       <button 
-                          onClick={handleSendReply}
-                          className="w-12 h-12 bg-amber-500 text-[#0A0F1E] rounded-xl flex items-center justify-center active:scale-95 transition-transform"
-                       >
-                          <Send size={18} />
-                       </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
             {activeTab === 'TASKS' && (
               <div className="space-y-6">
@@ -2307,19 +2198,6 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedChat(selectedUserForManagement.id);
-                      setActiveTab('CHATS');
-                      setSelectedUserForManagement(null);
-                      WebApp.HapticFeedback.impactOccurred('medium');
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-[#0A0F1E] rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
-                  >
-                    <MessageSquare size={12} />
-                    Chat
-                  </button>
                   <button 
                     onClick={() => setSelectedUserForManagement(null)}
                     className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:bg-white/10 active:scale-95 transition-all text-white"
@@ -2465,19 +2343,6 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedChat(sub.id);
-                                setActiveTab('CHATS');
-                                setSelectedUserForManagement(null);
-                                WebApp.HapticFeedback.impactOccurred('medium');
-                              }}
-                              className="p-1.5 px-2 bg-amber-500 hover:bg-amber-600 text-[#0A0F1E] rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center gap-1 transition-all active:scale-95"
-                            >
-                              <MessageSquare size={9} />
-                              Chat
-                            </button>
                             <span className="text-[8px] px-1.5 py-0.5 bg-blue-500/10 text-blue-400 rounded border border-blue-500/10 font-bold uppercase">
                               {sub.currentLevel || 'INTERN'}
                             </span>

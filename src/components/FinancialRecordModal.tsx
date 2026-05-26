@@ -26,7 +26,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { db, auth, handleFirestoreError, OperationType, getUserDocId } from '../lib/firebase';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
 import { cn } from '../lib/utils';
 import WebApp from '@twa-dev/sdk';
 import { JOBS, JobLevel } from '../constants';
@@ -56,96 +56,95 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
   const totalBalance = balance.income + balance.personal + balance.workDeposit;
   
   useEffect(() => {
+    let active = true;
     if (isOpen && getUserDocId() !== 'guest') {
       setLoading(true);
       
-      // Fetch Recharges
-      const qr = query(
-        collection(db, 'recharges'),
-        where('userId', '==', getUserDocId()),
-        orderBy('timestamp', 'desc')
-      );
-      const unsubRecharge = onSnapshot(qr, (snap) => {
-        setRecharges(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      }, (error) => {
-        console.error("Error loading recharges in FinancialRecordModal:", error);
+      const fetchData = async () => {
         try {
-          handleFirestoreError(error, OperationType.LIST, 'recharges');
-        } catch (e) {}
-      });
+          const userId = getUserDocId();
 
-      // Fetch Withdrawals
-      const qw = query(
-        collection(db, 'withdrawals'),
-        where('userId', '==', getUserDocId()),
-        orderBy('timestamp', 'desc')
-      );
-      const unsubWithdraw = onSnapshot(qw, (snap) => {
-        setWithdrawals(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      }, (error) => {
-        console.error("Error loading withdrawals in FinancialRecordModal:", error);
-        try {
-          handleFirestoreError(error, OperationType.LIST, 'withdrawals');
-        } catch (e) {}
-      });
+          // Fetch Recharges
+          const qr = query(
+            collection(db, 'recharges'),
+            where('userId', '==', userId),
+            orderBy('timestamp', 'desc'),
+            limit(50)
+          );
+          const rechargeSnap = await getDocs(qr);
+          if (!active) return;
+          setRecharges(rechargeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-      // Fetch Bonuses
-      const qb = query(
-        collection(db, 'bonuses'),
-        where('userId', '==', getUserDocId()),
-        orderBy('timestamp', 'desc')
-      );
-      const unsubBonus = onSnapshot(qb, (snap) => {
-        setBonuses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      }, (error) => {
-        console.error("Error loading bonuses in FinancialRecordModal:", error);
-      });
+          // Fetch Withdrawals
+          const qw = query(
+            collection(db, 'withdrawals'),
+            where('userId', '==', userId),
+            orderBy('timestamp', 'desc'),
+            limit(50)
+          );
+          const withdrawSnap = await getDocs(qw);
+          if (!active) return;
+          setWithdrawals(withdrawSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-      // Fetch Task Completions (Direct Work Commissions)
-      const qth = query(
-        collection(db, 'taskHistory'),
-        where('userId', '==', getUserDocId()),
-        orderBy('timestamp', 'desc')
-      );
-      const unsubTaskHistory = onSnapshot(qth, (snap) => {
-        setOwnCommissions(snap.docs.map(doc => ({ 
-          id: doc.id, 
-          amount: doc.data().commission, 
-          label: doc.data().taskTitle || 'Ad Task Completion',
-          type: 'personal_task',
-          timestamp: doc.data().timestamp
-        })));
-      }, (error) => {
-        console.error("Error loading taskHistory in FinancialRecordModal:", error);
-      });
+          // Fetch Bonuses
+          const qb = query(
+            collection(db, 'bonuses'),
+            where('userId', '==', userId),
+            orderBy('timestamp', 'desc'),
+            limit(50)
+          );
+          const bonusSnap = await getDocs(qb);
+          if (!active) return;
+          setBonuses(bonusSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-      // Fetch Team Commissions (Indirect Subordinate Commissions)
-      const qc = query(
-        collection(db, 'commissions'),
-        where('userId', '==', getUserDocId()),
-        orderBy('timestamp', 'desc')
-      );
-      const unsubCommissions = onSnapshot(qc, (snap) => {
-        setTeamCommissions(snap.docs.map(doc => ({ 
-          id: doc.id, 
-          amount: doc.data().amount, 
-          label: doc.data().label || 'Team Task Commission',
-          type: doc.data().type || 'team',
-          subordinatePhone: doc.data().subordinatePhone || '',
-          timestamp: doc.data().timestamp
-        })));
-        setLoading(false);
-      }, (error) => {
-        console.error("Error loading commissions in FinancialRecordModal:", error);
-        setLoading(false);
-      });
+          // Fetch Task Completions
+          const qth = query(
+            collection(db, 'taskHistory'),
+            where('userId', '==', userId),
+            orderBy('timestamp', 'desc'),
+            limit(50)
+          );
+          const taskHistorySnap = await getDocs(qth);
+          if (!active) return;
+          setOwnCommissions(taskHistorySnap.docs.map(doc => ({ 
+            id: doc.id, 
+            amount: doc.data().commission, 
+            label: doc.data().taskTitle || 'Ad Task Completion',
+            type: 'personal_task',
+            timestamp: doc.data().timestamp
+          })));
+
+          // Fetch Team Commissions
+          const qc = query(
+            collection(db, 'commissions'),
+            where('userId', '==', userId),
+            orderBy('timestamp', 'desc'),
+            limit(50)
+          );
+          const commissionsSnap = await getDocs(qc);
+          if (!active) return;
+          setTeamCommissions(commissionsSnap.docs.map(doc => ({ 
+            id: doc.id, 
+            amount: doc.data().amount, 
+            label: doc.data().label || 'Team Task Commission',
+            type: doc.data().type || 'team',
+            subordinatePhone: doc.data().subordinatePhone || '',
+            timestamp: doc.data().timestamp
+          })));
+
+        } catch (error) {
+          console.error("Error loading financial records:", error);
+        } finally {
+          if (active) {
+            setLoading(false);
+          }
+        }
+      };
+
+      fetchData();
 
       return () => {
-        unsubRecharge();
-        unsubWithdraw();
-        unsubBonus();
-        unsubTaskHistory();
-        unsubCommissions();
+        active = false;
       };
     } else {
       setLoading(false);

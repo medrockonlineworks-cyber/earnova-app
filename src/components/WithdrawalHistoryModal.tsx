@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Clock, CheckCircle2, AlertCircle, ArrowDownLeft, Wallet } from 'lucide-react';
 import { db, auth, getUserDocId } from '../lib/firebase';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
 import { cn } from '../lib/utils';
 import WebApp from '@twa-dev/sdk';
 
@@ -17,27 +17,54 @@ export function WithdrawalHistoryModal({ isOpen, onClose, t }: WithdrawalHistory
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (isOpen && getUserDocId() !== 'guest') {
+    let active = true;
+    const uid = getUserDocId();
+    if (isOpen && uid !== 'guest') {
       setLoading(true);
-      const q = query(
-        collection(db, 'withdrawals'),
-        where('userId', '==', getUserDocId()),
-        orderBy('timestamp', 'desc')
-      );
 
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const data = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setWithdrawals(data);
-        setLoading(false);
-      }, (error) => {
-        console.error("Error fetching withdrawals:", error);
-        setLoading(false);
-      });
+      const fetchData = async () => {
+        let localBackup: any[] = [];
+        try {
+          const stored = localStorage.getItem(`earnova_cache_withdrawals_${uid}`);
+          if (stored) {
+            localBackup = JSON.parse(stored);
+          }
+        } catch (e) {}
 
-      return () => unsubscribe();
+        try {
+          const q = query(
+            collection(db, 'withdrawals'),
+            where('userId', '==', uid),
+            orderBy('timestamp', 'desc'),
+            limit(50)
+          );
+          const snapshot = await getDocs(q);
+          if (!active) return;
+          const data = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          setWithdrawals(data);
+
+          try {
+            localStorage.setItem(`earnova_cache_withdrawals_${uid}`, JSON.stringify(data));
+          } catch (e) {}
+        } catch (error) {
+          console.warn("Firestore error fetching withdrawals (using local cache):", error);
+          if (active && localBackup.length > 0) {
+            setWithdrawals(localBackup);
+          }
+        } finally {
+          if (active) {
+            setLoading(false);
+          }
+        }
+      };
+      fetchData();
+
+      return () => {
+        active = false;
+      };
     }
   }, [isOpen]);
 

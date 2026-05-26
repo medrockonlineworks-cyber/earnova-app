@@ -361,8 +361,21 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showAuthSetupNotice, setShowAuthSetupNotice] = useState(false);
   const [tasksClaimedToday, setTasksClaimedToday] = useState<number>(() => {
-    const saved = localStorage.getItem('tasksCompletedCount');
-    const date = localStorage.getItem('taskCompletionDate');
+    const activeUserId = localStorage.getItem('earnova_logged_in_phone') || '';
+    if (!activeUserId) return 0;
+    const localProfilesStr = localStorage.getItem('earnova_local_profiles');
+    if (localProfilesStr) {
+      try {
+        const localProfiles = JSON.parse(localProfilesStr);
+        const data = localProfiles[activeUserId];
+        const today = new Date().toDateString();
+        if (data && data.lastTaskClaimDate === today) {
+          return data.tasksClaimedToday || 0;
+        }
+      } catch (e) {}
+    }
+    const saved = localStorage.getItem(`tasksCompletedCount_${activeUserId}`);
+    const date = localStorage.getItem(`taskCompletionDate_${activeUserId}`);
     const today = new Date().toDateString();
     if (date === today) {
       return saved ? parseInt(saved) : 0;
@@ -371,8 +384,21 @@ export default function App() {
   });
 
   useEffect(() => {
-    localStorage.setItem('tasksCompletedCount', tasksClaimedToday.toString());
-    localStorage.setItem('taskCompletionDate', new Date().toDateString());
+    const activeUserId = localStorage.getItem('earnova_logged_in_phone') || '';
+    if (activeUserId) {
+      localStorage.setItem(`tasksCompletedCount_${activeUserId}`, tasksClaimedToday.toString());
+      localStorage.setItem(`taskCompletionDate_${activeUserId}`, new Date().toDateString());
+      
+      try {
+        const localProfilesStr = localStorage.getItem('earnova_local_profiles');
+        const localProfiles = localProfilesStr ? JSON.parse(localProfilesStr) : {};
+        if (localProfiles[activeUserId]) {
+          localProfiles[activeUserId].tasksClaimedToday = tasksClaimedToday;
+          localProfiles[activeUserId].lastTaskClaimDate = new Date().toDateString();
+          localStorage.setItem('earnova_local_profiles', JSON.stringify(localProfiles));
+        }
+      } catch (e) {}
+    }
   }, [tasksClaimedToday]);
 
   // Advertising Popups State & Effects
@@ -381,19 +407,31 @@ export default function App() {
   const [activeAd, setActiveAd] = useState<any>(null);
   const [adCountdown, setAdCountdown] = useState(10);
 
-  // Synchronize advertisements list from Firestore
+  // Synchronize advertisements list from Firestore with session cache to minimize reads
   useEffect(() => {
-    const q = query(collection(db, 'advertisements'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: any[] = [];
-      snapshot.forEach((doc) => {
-        list.push({ id: doc.id, ...doc.data() });
-      });
-      setAds(list);
-    }, (err) => {
-      console.warn("Advertisements stream error:", err);
-    });
-    return () => unsubscribe();
+    const cachedAds = sessionStorage.getItem('earnova_cached_ads');
+    if (cachedAds) {
+      try {
+        setAds(JSON.parse(cachedAds));
+        return;
+      } catch (e) {}
+    }
+
+    const fetchAds = async () => {
+      try {
+        const { collection, getDocs } = await import('firebase/firestore');
+        const listSnap = await getDocs(collection(db, 'advertisements'));
+        const list: any[] = [];
+        listSnap.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        setAds(list);
+        sessionStorage.setItem('earnova_cached_ads', JSON.stringify(list));
+      } catch (err) {
+        console.warn("Advertisements fetch error (cached/skipped):", err);
+      }
+    };
+    fetchAds();
   }, []);
 
   const playNextAd = () => {
@@ -504,6 +542,45 @@ export default function App() {
     const userDocId = getUserDocId();
 
     if (userDocId) {
+      // 1. Instantly bootstrap from local state to bypass Firestore reads/quotas & provide lightning-fast loading
+      let localData: any = null;
+      try {
+        const localProfilesStr = localStorage.getItem('earnova_local_profiles');
+        const localProfiles = localProfilesStr ? JSON.parse(localProfilesStr) : {};
+        localData = localProfiles[userDocId];
+        if (localData) {
+          setUserProfile({
+            phoneNumber: localData.phoneNumber || userDocId,
+            fullName: localData.fullName || '',
+            email: localData.email || ''
+          });
+          setBalance({
+            personal: localData.personal || 0,
+            income: localData.income || 0,
+            workDeposit: localData.workDeposit || 0,
+            recommended: localData.recommended || 0,
+            teamTasks: localData.teamTasks || 0
+          });
+          if (localData.currentLevel) {
+            setCurrentJobLevel(localData.currentLevel as JobLevel);
+          }
+          if (localData.status) {
+            setUserStatus(localData.status);
+          }
+          if (localData.signedContracts) {
+            setSignedContracts(localData.signedContracts);
+          }
+          const todayString = new Date().toDateString();
+          if (localData.lastTaskClaimDate === todayString) {
+            setTasksClaimedToday(localData.tasksClaimedToday || 0);
+          } else {
+            setTasksClaimedToday(0);
+          }
+        }
+      } catch (e) {
+        console.warn("Error loading cached user profile:", e);
+      }
+
       const userRef = doc(db, 'users', userDocId);
       getDoc(userRef).then((snap) => {
         if (!snap.exists()) {
@@ -523,6 +600,21 @@ export default function App() {
       unsubUser = onSnapshot(userRef, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
+          
+          // Cache latest state in localStorage
+          try {
+            const profilesStr = localStorage.getItem('earnova_local_profiles');
+            const profiles = profilesStr ? JSON.parse(profilesStr) : {};
+            profiles[userDocId] = {
+              ...(profiles[userDocId] || {}),
+              ...data,
+              phoneNumber: data.phoneNumber || userDocId
+            };
+            localStorage.setItem('earnova_local_profiles', JSON.stringify(profiles));
+          } catch (e) {
+            console.warn("Error caching user profile states:", e);
+          }
+
           setUserProfile({
             phoneNumber: data.phoneNumber || userDocId,
             fullName: data.fullName || '',
@@ -550,6 +642,12 @@ export default function App() {
             setSignedContracts(data.signedContracts);
           } else {
             setSignedContracts([]);
+          }
+          const todayString = new Date().toDateString();
+          if (data.lastTaskClaimDate === todayString) {
+            setTasksClaimedToday(data.tasksClaimedToday || 0);
+          } else {
+            setTasksClaimedToday(0);
           }
         } else {
           setUserProfile({
@@ -725,10 +823,15 @@ export default function App() {
     // 2. Real-time Firestore database verification check
     if (getUserDocId()) {
       try {
-        const { collection, getDocs, query, where } = await import('firebase/firestore');
+        const { collection, getDocs, query, where, orderBy, limit } = await import('firebase/firestore');
         const { db } = await import('./lib/firebase');
         
-        const q = query(collection(db, 'withdrawals'), where('userId', '==', getUserDocId()));
+        const q = query(
+          collection(db, 'withdrawals'), 
+          where('userId', '==', getUserDocId()),
+          orderBy('timestamp', 'desc'),
+          limit(1)
+        );
         const querySnapshot = await getDocs(q);
         
         const localToday = new Date();
@@ -1032,8 +1135,9 @@ export default function App() {
   const handleTaskAction = async (title: string, commission: number, taskId?: string) => {
     WebApp.HapticFeedback.notificationOccurred('success');
     showNotification(`${t('mission_claimed_msg')}! +ETB ${commission}`, 'success');
+    const nextClaimedToday = tasksClaimedToday + 1;
     setBalance(prev => ({ ...prev, income: prev.income + commission }));
-    setTasksClaimedToday(prev => prev + 1);
+    setTasksClaimedToday(nextClaimedToday);
 
     const activeUserId = getUserDocId();
     if (activeUserId) {
@@ -1041,8 +1145,11 @@ export default function App() {
         const { updateDoc, arrayUnion, increment, addDoc, serverTimestamp } = await import('firebase/firestore');
         const userRef = doc(db, 'users', activeUserId);
         
+        const todayString = new Date().toDateString();
         const updatePayload: any = {
-          income: increment(commission)
+          income: increment(commission),
+          lastTaskClaimDate: todayString,
+          tasksClaimedToday: nextClaimedToday
         };
         
         if (taskId) {
@@ -2738,6 +2845,12 @@ const DEFAULT_FALLBACK_VIDEO_TASKS = [
   }
 ];
 
+// Memory caches to eliminate repetitive Firestore reads during Mini-App navigation and tab switches
+let globalTasksCache: any[] | null = null;
+let globalTasksLastFetchedAt = 0;
+const globalCompletedTaskIdsCache: Record<string, string[]> = {};
+const globalCompletedLastFetchedAt: Record<string, number> = {};
+
 function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, t, currentLang = 'EN', onShowHistory }: { currentLevel: JobLevel, onTaskAction: (t: string, c: number, taskId?: string) => void, tasksClaimedToday: number, currentUser: any, t: any, currentLang?: string, onShowHistory: () => void }) {
   const job = JOBS.find(j => j.level === currentLevel) || JOBS[0];
   const taskCount = job.dailyTasks;
@@ -2797,39 +2910,75 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
 
   // Load database tasks from Firestore tasks collection
   useEffect(() => {
-    const q = query(collection(db, 'tasks'));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setDbTasks(tasks);
-    }, (err) => {
-      console.error("Firestore loading tasks error in TaskPage", err);
+    // If we have cached tasks and they are fresh (less than 10 mins old), use them to save Firestore reads
+    if (globalTasksCache && (Date.now() - globalTasksLastFetchedAt < 600000)) {
+      setDbTasks(globalTasksCache);
+      return;
+    }
+
+    const fetchTasks = async () => {
       try {
-        handleFirestoreError(err, OperationType.LIST, 'tasks');
-      } catch (formattedErr) {
-        // Log the error nicely or let state handle it if needed
+        const { collection, getDocs } = await import('firebase/firestore');
+        const tasksSnap = await getDocs(collection(db, 'tasks'));
+        const tasks = tasksSnap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+        globalTasksCache = tasks;
+        globalTasksLastFetchedAt = Date.now();
+        setDbTasks(tasks);
+      } catch (err) {
+        console.error("Firestore loading tasks error in TaskPage", err);
+        try {
+          handleFirestoreError(err, OperationType.LIST, 'tasks');
+        } catch (formattedErr) {}
       }
-    });
-    return () => unsub();
+    };
+
+    fetchTasks();
   }, []);
 
-  // Sync historical claims from user profile in Firestore (real-time snapshot listener)
+  // Sync historical claims from user profile in Firestore
   useEffect(() => {
     const activeUserId = getUserDocId();
     if (!activeUserId) return;
-    const userRef = doc(db, 'users', activeUserId);
-    const unsub = onSnapshot(userRef, (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data && data.completedTaskIds) {
-          setDbCompletedIds(data.completedTaskIds);
-          // Sync to localStorage fallback
-          localStorage.setItem(`earnova_historical_claimed_${activeUserId}`, JSON.stringify(data.completedTaskIds));
+
+    // Check if we already fetched completed IDs for this user during this session
+    if (globalCompletedTaskIdsCache[activeUserId] && (Date.now() - (globalCompletedLastFetchedAt[activeUserId] || 0) < 600000)) {
+      setDbCompletedIds(globalCompletedTaskIdsCache[activeUserId]);
+      return;
+    }
+
+    // Try loading immediately from localStorage to eliminate latency & queries entirely
+    try {
+      const savedClaims = localStorage.getItem(`earnova_historical_claimed_${activeUserId}`);
+      if (savedClaims) {
+        const parsed = JSON.parse(savedClaims);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setDbCompletedIds(parsed);
+          globalCompletedTaskIdsCache[activeUserId] = parsed;
+          globalCompletedLastFetchedAt[activeUserId] = Date.now();
         }
       }
-    }, (err) => {
-      console.error("Error loading historical claims in TaskPage", err);
-    });
-    return () => unsub();
+    } catch (e) {}
+
+    const fetchUserCompleted = async () => {
+      try {
+        const { doc, getDoc } = await import('firebase/firestore');
+        const userRef = doc(db, 'users', activeUserId);
+        const snap = await getDoc(userRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data && data.completedTaskIds) {
+            setDbCompletedIds(data.completedTaskIds);
+            globalCompletedTaskIdsCache[activeUserId] = data.completedTaskIds;
+            globalCompletedLastFetchedAt[activeUserId] = Date.now();
+            localStorage.setItem(`earnova_historical_claimed_${activeUserId}`, JSON.stringify(data.completedTaskIds));
+          }
+        }
+      } catch (err) {
+        console.error("Error loading historical claims in TaskPage", err);
+      }
+    };
+
+    fetchUserCompleted();
   }, []);
 
   // Fetch or set existing allocated tasks from localStorage and clear old fallbacks if present
@@ -3649,6 +3798,12 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
   );
 }
 
+// Memory caches to eliminate repetitive Firestore reads for user stats task history
+let globalHistoryCache: any[] | null = null;
+let globalHistoryLastFetchedAt = 0;
+let globalHistoryCachedUid = '';
+let globalHistoryCachedClaimedCount = -1;
+
 function ProfilePage({ 
   balance, 
   currentJobLevel, 
@@ -3675,18 +3830,53 @@ function ProfilePage({
   useEffect(() => {
     let active = true;
     const fetchHistory = async () => {
+      const { getUserDocId } = await import('./lib/firebase');
+      const uid = getUserDocId();
+      if (!uid) {
+        setLoadingHistory(false);
+        return;
+      }
+
+      // Try reading previous local copy immediately to prevent blank renders or quota error crash
+      let localBackup: any[] = [];
       try {
-        const { collection, getDocs, query, where } = await import('firebase/firestore');
-        const { db, getUserDocId } = await import('./lib/firebase');
-        const uid = getUserDocId();
-        if (!uid) {
-          setLoadingHistory(false);
-          return;
+        const stored = localStorage.getItem(`earnova_stats_history_${uid}`);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            localBackup = parsed.map(item => ({
+              ...item,
+              date: item.dateStr ? new Date(item.dateStr) : null
+            }));
+          }
         }
+      } catch (e) {
+        console.warn("localStorage history read error:", e);
+      }
+
+      // Check if same user state is already in memory cache and fresh (under 5 mins) to abort query
+      if (
+        globalHistoryCache && 
+        globalHistoryCachedUid === uid && 
+        globalHistoryCachedClaimedCount === tasksClaimedToday &&
+        (Date.now() - globalHistoryLastFetchedAt < 300000)
+      ) {
+        if (active) {
+          setHistoryItems(globalHistoryCache);
+          setLoadingHistory(false);
+        }
+        return;
+      }
+
+      try {
+        const { collection, getDocs, query, where, orderBy, limit } = await import('firebase/firestore');
+        const { db } = await import('./lib/firebase');
 
         const q = query(
           collection(db, 'taskHistory'),
-          where('userId', '==', uid)
+          where('userId', '==', uid),
+          orderBy('timestamp', 'desc'),
+          limit(150)
         );
         const snapshot = await getDocs(q);
         if (!active) return;
@@ -3705,11 +3895,32 @@ function ProfilePage({
           });
         });
 
+        // Update memory cache
+        globalHistoryCache = items;
+        globalHistoryLastFetchedAt = Date.now();
+        globalHistoryCachedUid = uid;
+        globalHistoryCachedClaimedCount = tasksClaimedToday;
+
+        // Backup to localStorage
+        try {
+          const serialized = items.map(it => ({
+            id: it.id,
+            commission: it.commission,
+            dateStr: it.date ? it.date.toISOString() : null
+          }));
+          localStorage.setItem(`earnova_stats_history_${uid}`, JSON.stringify(serialized));
+        } catch (e) {
+          console.warn("localStorage history write error:", e);
+        }
+
         if (active) {
           setHistoryItems(items);
         }
       } catch (err) {
-        console.error("Error fetching task history for stats:", err);
+        console.error("Error fetching task history for stats (capped fallback used):", err);
+        if (active && localBackup.length > 0) {
+          setHistoryItems(localBackup);
+        }
       } finally {
         if (active) setLoadingHistory(false);
       }
@@ -3823,10 +4034,6 @@ function ProfilePage({
           <div className="flex gap-1.5">
             <button onClick={() => handleAction('Settings')} className="p-1.5 bg-gray-100 text-gray-400 rounded-lg active:scale-90 transition-transform">
               <Settings size={14} />
-            </button>
-            <button onClick={() => handleAction('Support Messages')} className="p-1.5 bg-gray-100 text-gray-400 rounded-lg relative active:scale-90 transition-transform">
-              <MessageCircle size={14} />
-              <div className="absolute top-0 right-0 w-3 h-3 bg-rose-500 text-white rounded-full flex items-center justify-center text-[7px] font-black">0</div>
             </button>
           </div>
         </div>

@@ -183,21 +183,43 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
         }
       }
 
+      let userData: any = null;
+      let usingLocalFallback = false;
+      const userRef = doc(db, 'users', cleanPhone);
+
       if (cleanPhone === '0926193920') {
         const inputPassword = password || '';
         if (inputPassword.trim() !== '85212121') {
           throw new Error(currentLang === 'AM' ? 'የተሳሳተ የይለፍ ቃል ያስገቡ' : 'Wrong password. Please try again.');
         }
 
-        const userRef = doc(db, 'users', cleanPhone);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          const { updateDoc } = await import('firebase/firestore');
-          await updateDoc(userRef, {
-            password: '85212121'
-          });
-        } else {
-          await setDoc(userRef, {
+        try {
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            const { updateDoc } = await import('firebase/firestore');
+            await updateDoc(userRef, {
+              password: '85212121'
+            });
+            userData = { ...userSnap.data(), password: '85212121' };
+          } else {
+            userData = {
+              personal: 0.00,
+              income: 0.00,
+              workDeposit: 0.00,
+              status: 'active',
+              currentLevel: 'VIP5',
+              phoneNumber: cleanPhone,
+              fullName: 'Admin Council',
+              password: '85212121',
+              invitedBy: '',
+              createdAt: new Date().toISOString()
+            };
+            await setDoc(userRef, userData);
+          }
+        } catch (adminErr) {
+          console.warn("Firestore admin check failed, using local profile fallback:", adminErr);
+          usingLocalFallback = true;
+          userData = {
             personal: 0.00,
             income: 0.00,
             workDeposit: 0.00,
@@ -208,81 +230,150 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
             password: '85212121',
             invitedBy: '',
             createdAt: new Date().toISOString()
-          });
+          };
         }
-        localStorage.setItem('earnova_logged_in_phone', cleanPhone);
-      } else if (activeTab === 'LOGIN') {
-        const userRef = doc(db, 'users', cleanPhone);
-        const userSnap = await getDoc(userRef);
-
-        if (!userSnap.exists()) {
-          throw new Error(currentLang === 'AM' ? 'ስልክ ቁጥሩ አልተመዘገበም' : 'Phone number is not registered. Please sign up.');
-        }
-
-        const userData = userSnap.data();
-        const storedPassword = userData.password || '';
-        const inputPassword = password || '';
-        if (storedPassword !== inputPassword && storedPassword.trim() !== inputPassword.trim()) {
-          throw new Error(currentLang === 'AM' ? 'የተሳሳተ የይለፍ ቃል ያስገቡ' : 'Wrong password. Please try again.');
-        }
-
-        // Successfully authenticated! Store in localStorage
         localStorage.setItem('earnova_logged_in_phone', cleanPhone);
       } else {
-        // REGISTER
-        const userRef = doc(db, 'users', cleanPhone);
-        const userSnap = await getDoc(userRef);
+        // Normal profile lookup with full fallback support
+        try {
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            userData = userSnap.data();
+          }
+        } catch (dbErr: any) {
+          console.warn("Firestore access query limit or connection offline. Activating localStorage registry fallback:", dbErr);
+          usingLocalFallback = true;
+          
+          try {
+            const localProfilesStr = localStorage.getItem('earnova_local_profiles');
+            const localProfiles = localProfilesStr ? JSON.parse(localProfilesStr) : {};
+            if (localProfiles[cleanPhone]) {
+              userData = localProfiles[cleanPhone];
+            }
+          } catch (cacheErr) {
+            console.error("Local profile cache access issue:", cacheErr);
+          }
+        }
 
-        if (userSnap.exists()) {
-          const userData = userSnap.data();
-          const storedPassword = userData.password || '';
-          const inputPassword = password || '';
-          if (userData && (storedPassword === inputPassword || storedPassword.trim() === inputPassword.trim())) {
-            // Password matches existing registered account! Seamlessly log them in
+        if (activeTab === 'LOGIN') {
+          if (!userData) {
+            if (usingLocalFallback) {
+              console.log("No local profile found during quota timeout. Auto-registering local user to bypass block.");
+            } else {
+              throw new Error(currentLang === 'AM' ? 'ስልክ ቁጥሩ አልተመዘገበም' : 'Phone number is not registered. Please sign up.');
+            }
+          }
+
+          if (userData) {
+            const storedPassword = userData.password || '';
+            const inputPassword = password || '';
+            if (storedPassword !== inputPassword && storedPassword.trim() !== inputPassword.trim()) {
+              throw new Error(currentLang === 'AM' ? 'የተሳሳተ የይለፍ ቃል ያስገቡ' : 'Wrong password. Please try again.');
+            }
             localStorage.setItem('earnova_logged_in_phone', cleanPhone);
           } else {
-            throw new Error(currentLang === 'AM' 
-              ? 'ይህ ስልክ ቁጥር ቀድሞ ተመዝግቧል፤ እባክዎ በትክክለኛው የይለፍ ቃል ለመግባት ይሞክሩ' 
-              : 'Phone number is already registered. Please log in or use your correct password.');
+            // Out of quota + not in local storage cache -> create a local profile immediately so they can play
+            const cleanInvitedBy = invitedBy.trim();
+            const localRegisterProfile = {
+              personal: 0.00,
+              income: 0.00,
+              workDeposit: 0.00,
+              status: 'active',
+              currentLevel: 'INTERN',
+              phoneNumber: cleanPhone,
+              fullName: fullName.trim() || 'User ' + cleanPhone.slice(-4),
+              password: password.trim(),
+              invitedBy: cleanInvitedBy,
+              createdAt: new Date().toISOString()
+            };
+            
+            try {
+              const localProfilesStr = localStorage.getItem('earnova_local_profiles');
+              const localProfiles = localProfilesStr ? JSON.parse(localProfilesStr) : {};
+              localProfiles[cleanPhone] = localRegisterProfile;
+              localStorage.setItem('earnova_local_profiles', JSON.stringify(localProfiles));
+            } catch (err) {}
+
+            localStorage.setItem('earnova_logged_in_phone', cleanPhone);
           }
         } else {
-          let cleanInvitedBy = invitedBy.trim();
-          if (cleanInvitedBy.includes('-')) {
-            cleanInvitedBy = cleanInvitedBy.split('-').pop() || cleanInvitedBy;
-          }
-          
-          // Decode premium base36 invite code back to the original referrer phone number
-          if (/^[A-Z0-9]+$/i.test(cleanInvitedBy) && !cleanInvitedBy.startsWith('guest_') && isNaN(Number(cleanInvitedBy))) {
-            try {
-              const decodedNum = parseInt(cleanInvitedBy, 36);
-              if (!isNaN(decodedNum)) {
-                cleanInvitedBy = '0' + decodedNum.toString();
-              }
-            } catch (err) {
-              console.warn("Base36 decoding issue:", err);
+          // REGISTER
+          if (userData && !usingLocalFallback) {
+            const storedPassword = userData.password || '';
+            const inputPassword = password || '';
+            if (storedPassword === inputPassword || storedPassword.trim() === inputPassword.trim()) {
+              // Password matches existing registered account! Seamlessly log them in
+              localStorage.setItem('earnova_logged_in_phone', cleanPhone);
+            } else {
+              throw new Error(currentLang === 'AM' 
+                ? 'ይህ ስልክ ቁጥር ቀድሞ ተመዝግቧል፤ እባክዎ በትክክለኛው የይለፍ ቃል ለመግባት ይሞክሩ' 
+                : 'Phone number is already registered. Please log in or use your correct password.');
             }
-          } else if (!cleanInvitedBy.startsWith('guest_')) {
-            cleanInvitedBy = cleanInvitedBy.replace(/\D/g, '');
+          } else {
+            let cleanInvitedBy = invitedBy.trim();
+            if (cleanInvitedBy.includes('-')) {
+              cleanInvitedBy = cleanInvitedBy.split('-').pop() || cleanInvitedBy;
+            }
+            
+            // Decode premium base36 invite code back to the original referrer phone number
+            if (/^[A-Z0-9]+$/i.test(cleanInvitedBy) && !cleanInvitedBy.startsWith('guest_') && isNaN(Number(cleanInvitedBy))) {
+              try {
+                const decodedNum = parseInt(cleanInvitedBy, 36);
+                if (!isNaN(decodedNum)) {
+                  cleanInvitedBy = '0' + decodedNum.toString();
+                }
+              } catch (err) {
+                console.warn("Base36 decoding issue:", err);
+              }
+            } else if (!cleanInvitedBy.startsWith('guest_')) {
+              cleanInvitedBy = cleanInvitedBy.replace(/\D/g, '');
+            }
+
+            const newUserProfile = {
+              personal: 0.00, // Claimed via onboarding tour
+              income: 0.00,
+              workDeposit: 0.00,
+              status: 'active',
+              currentLevel: 'INTERN',
+              phoneNumber: cleanPhone,
+              fullName: fullName.trim(),
+              password: password.trim(), // Save for secure offline-free lookup
+              invitedBy: cleanInvitedBy,
+              createdAt: new Date().toISOString()
+            };
+
+            // Write to Firestore if possible
+            if (!usingLocalFallback) {
+              try {
+                await setDoc(userRef, newUserProfile);
+              } catch (writeErr) {
+                console.warn("Firestore sign up failed, registering locally:", writeErr);
+              }
+            }
+
+            // Always back up profile in locally persistent storage
+            try {
+              const localProfilesStr = localStorage.getItem('earnova_local_profiles');
+              const localProfiles = localProfilesStr ? JSON.parse(localProfilesStr) : {};
+              localProfiles[cleanPhone] = newUserProfile;
+              localStorage.setItem('earnova_local_profiles', JSON.stringify(localProfiles));
+            } catch (err) {}
+
+            // Store in localStorage as logged in
+            localStorage.setItem('earnova_logged_in_phone', cleanPhone);
           }
-
-          // Write custom credentials & profile fields using cleanPhone as key to users
-          await setDoc(userRef, {
-            personal: 0.00, // Claimed via onboarding tour
-            income: 0.00,
-            workDeposit: 0.00,
-            status: 'active',
-            currentLevel: 'INTERN',
-            phoneNumber: cleanPhone,
-            fullName: fullName.trim(),
-            password: password.trim(), // Save for secure offline-free lookup
-            invitedBy: cleanInvitedBy,
-            createdAt: new Date().toISOString()
-          });
-
-          // Store in localStorage as logged in
-          localStorage.setItem('earnova_logged_in_phone', cleanPhone);
         }
       }
+
+      // Sync user records with memory
+      try {
+        const localProfilesStr = localStorage.getItem('earnova_local_profiles');
+        const localProfiles = localProfilesStr ? JSON.parse(localProfilesStr) : {};
+        if (userData && localProfiles[cleanPhone]) {
+          localProfiles[cleanPhone] = { ...localProfiles[cleanPhone], ...userData };
+          localStorage.setItem('earnova_local_profiles', JSON.stringify(localProfiles));
+        }
+      } catch (err) {}
 
       if (rememberMe) {
         localStorage.setItem('earnova_remember_me', 'true');

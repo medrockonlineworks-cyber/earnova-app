@@ -31,36 +31,68 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
     let isMounted = true;
     async function fetchRealTeam() {
       try {
-        const { collection, getDocs } = await import('firebase/firestore');
-        const querySnapshot = await getDocs(collection(db, 'users'));
-        const allUsers: any[] = [];
-        querySnapshot.forEach((docSnap) => {
-          allUsers.push({ id: docSnap.id, ...docSnap.data() });
-        });
-
+        const { collection, getDocs, query, where, limit } = await import('firebase/firestore');
         const currentPhone = getUserDocId();
+        if (!currentPhone) {
+          if (isMounted) setIsLoading(false);
+          return;
+        }
 
-        // Level 1: users where invitedBy matches current user ID or current Phone
-        const level1Users = allUsers.filter(u => {
-          const invBy = (u.invitedBy || '').trim();
-          return (invBy === currentPhone) && u.status !== 'inactive';
+        // Level 1: Fetch users invited by the current user (limit to 100 for safety)
+        const q1 = query(
+          collection(db, 'users'), 
+          where('invitedBy', '==', currentPhone),
+          limit(100)
+        );
+        const q1Snap = await getDocs(q1);
+        const level1Users: any[] = [];
+        q1Snap.forEach(snap => {
+          const data = snap.data();
+          if (data.status !== 'inactive') {
+            level1Users.push({ id: snap.id, ...data });
+          }
         });
 
-        const level1Ids = level1Users.map(u => u.phoneNumber || u.id);
+        const level1Ids = level1Users.map(u => u.phoneNumber || u.id).filter(Boolean);
 
-        // Level 2: users invited by Level 1 users
-        const level2Users = allUsers.filter(u => {
-          const invBy = (u.invitedBy || '').trim();
-          return level1Ids.includes(invBy) && u.status !== 'inactive';
-        });
+        // Level 2: Fetch users invited by Level 1 users (limit to 100 max)
+        let level2Users: any[] = [];
+        if (level1Ids.length > 0) {
+          // Chunk to avoid Firestore 'in' limit of 30
+          const chunkLimit = level1Ids.slice(0, 30);
+          const q2 = query(
+            collection(db, 'users'),
+            where('invitedBy', 'in', chunkLimit),
+            limit(100)
+          );
+          const q2Snap = await getDocs(q2);
+          q2Snap.forEach(snap => {
+            const data = snap.data();
+            if (data.status !== 'inactive') {
+              level2Users.push({ id: snap.id, ...data });
+            }
+          });
+        }
 
-        const level2Ids = level2Users.map(u => u.phoneNumber || u.id);
+        const level2Ids = level2Users.map(u => u.phoneNumber || u.id).filter(Boolean);
 
-        // Level 3: users invited by Level 2 users
-        const level3Users = allUsers.filter(u => {
-          const invBy = (u.invitedBy || '').trim();
-          return level2Ids.includes(invBy) && u.status !== 'inactive';
-        });
+        // Level 3: Fetch users invited by Level 2 users
+        let level3Users: any[] = [];
+        if (level2Ids.length > 0) {
+          const chunkLimit3 = level2Ids.slice(0, 30);
+          const q3 = query(
+            collection(db, 'users'),
+            where('invitedBy', 'in', chunkLimit3),
+            limit(100)
+          );
+          const q3Snap = await getDocs(q3);
+          q3Snap.forEach(snap => {
+            const data = snap.data();
+            if (data.status !== 'inactive') {
+              level3Users.push({ id: snap.id, ...data });
+            }
+          });
+        }
 
         const mapUserToMember = (u: any) => {
           let displayName = u.fullName || u.phoneNumber || u.id || 'Member';

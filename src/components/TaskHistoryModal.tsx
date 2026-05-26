@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, History, Sparkles, CheckCircle2, Clock } from 'lucide-react';
 import { db, getUserDocId } from '../lib/firebase';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
 import { cn } from '../lib/utils';
 import WebApp from '@twa-dev/sdk';
 
@@ -17,29 +17,58 @@ export function TaskHistoryModal({ isOpen, onClose, t }: TaskHistoryModalProps) 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     if (isOpen && getUserDocId() !== 'guest') {
       setLoading(true);
       const activeUserId = getUserDocId();
       
-      const q = query(
-        collection(db, 'taskHistory'),
-        where('userId', '==', activeUserId),
-        orderBy('timestamp', 'desc')
-      );
+      const fetchData = async () => {
+        let localBackup: any[] = [];
+        try {
+          const stored = localStorage.getItem(`earnova_stats_history_${activeUserId}`);
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+              localBackup = parsed.map(item => ({
+                id: item.id || Math.random().toString(),
+                taskTitle: item.taskTitle || 'Video Spot Feedback',
+                commission: item.commission || 0,
+                timestamp: item.dateStr ? new Date(item.dateStr) : new Date()
+              }));
+            }
+          }
+        } catch (e) {}
 
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const data = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setHistory(data);
-        setLoading(false);
-      }, (error) => {
-        console.error("Error fetching task history:", error);
-        setLoading(false);
-      });
+        try {
+          const q = query(
+            collection(db, 'taskHistory'),
+            where('userId', '==', activeUserId),
+            orderBy('timestamp', 'desc'),
+            limit(50)
+          );
+          const snapshot = await getDocs(q);
+          if (!active) return;
+          const data = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          setHistory(data);
+        } catch (error) {
+          console.warn("Firestore error fetching task history (using local backup):", error);
+          if (active && localBackup.length > 0) {
+            setHistory(history => localBackup);
+          }
+        } finally {
+          if (active) {
+            setLoading(false);
+          }
+        }
+      };
+      fetchData();
 
-      return () => unsubscribe();
+      return () => {
+        active = false;
+      };
     }
   }, [isOpen]);
 
