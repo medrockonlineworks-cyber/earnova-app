@@ -206,7 +206,7 @@ export function WithdrawModal({ incomeBalance, personalBalance, onClose, onWithd
 
         {/* Wizard Step Body */}
         <div className="flex-1 overflow-y-auto">
-          {isIntern ? (
+          {isIntern && step !== 'REGISTER' ? (
             <div className="p-8 flex flex-col items-center justify-center text-center space-y-6">
               <div className="w-20 h-20 bg-rose-50 border border-rose-150 rounded-full flex items-center justify-center text-rose-600 animate-bounce">
                 <Lock size={40} className="stroke-[2.5]" />
@@ -235,6 +235,16 @@ export function WithdrawModal({ incomeBalance, personalBalance, onClose, onWithd
                   className="w-full bg-rose-600 hover:bg-rose-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all text-center block"
                 >
                   Contact Support
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    WebApp.HapticFeedback.impactOccurred('medium');
+                    setStep('REGISTER');
+                  }}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest active:scale-95 transition-all text-center block border border-slate-200"
+                >
+                  ✏️ {currentLang === 'AM' ? 'የባንክ መረጃ ማሰሪያ / ማስተካከያ' : 'Bind / Edit Bank Details'}
                 </button>
                 <button
                   onClick={() => {
