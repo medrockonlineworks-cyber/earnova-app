@@ -91,7 +91,7 @@ const getUpgradeCommission = (subLevel: string, invLevel: string, depth: number)
 // Helper to award upgrade commission recursively up to 3 levels (A, B, C)
 async function fetchAndAwardUpgradeCommission(subordinateId: string, upgradeLevel: string) {
   try {
-    const { doc, getDoc, updateDoc, increment } = await import('firebase/firestore');
+    const { doc, getDoc, updateDoc, increment, addDoc, collection, serverTimestamp } = await import('firebase/firestore');
     
     // Level 1 Inviter (A)
     const subRef = doc(db, 'users', subordinateId);
@@ -113,6 +113,14 @@ async function fetchAndAwardUpgradeCommission(subordinateId: string, upgradeLeve
         income: increment(commA),
         recommended: increment(commA)
       });
+      await addDoc(collection(db, 'commissions'), {
+        userId: inviterA_Id,
+        amount: commA,
+        type: 'team_upgrade',
+        label: `Subordinate Level Upgrade Commission`,
+        subordinatePhone: subData?.phoneNumber || 'Subordinate',
+        timestamp: serverTimestamp()
+      });
     }
 
     // Level 2 Inviter (B)
@@ -128,6 +136,14 @@ async function fetchAndAwardUpgradeCommission(subordinateId: string, upgradeLeve
       await updateDoc(bRef, {
         income: increment(commB),
         recommended: increment(commB)
+      });
+      await addDoc(collection(db, 'commissions'), {
+        userId: inviterB_Id,
+        amount: commB,
+        type: 'team_upgrade',
+        label: `Indirect Subordinate Level Upgrade Commission`,
+        subordinatePhone: subData?.phoneNumber || 'Subordinate',
+        timestamp: serverTimestamp()
       });
     }
 
@@ -145,6 +161,14 @@ async function fetchAndAwardUpgradeCommission(subordinateId: string, upgradeLeve
         income: increment(commC),
         recommended: increment(commC)
       });
+      await addDoc(collection(db, 'commissions'), {
+        userId: inviterC_Id,
+        amount: commC,
+        type: 'team_upgrade',
+        label: `Indirect Subordinate Level Upgrade Commission`,
+        subordinatePhone: subData?.phoneNumber || 'Subordinate',
+        timestamp: serverTimestamp()
+      });
     }
   } catch (err) {
     console.warn("Error awarding upgrade commission to upline:", err);
@@ -154,7 +178,7 @@ async function fetchAndAwardUpgradeCommission(subordinateId: string, upgradeLeve
 // Helper to award daily task commission recursively up to 3 levels (A, B, C)
 async function fetchAndAwardTaskCommission(subordinateId: string, subordinateLevel: string, taskSingleCommission: number) {
   try {
-    const { doc, getDoc, updateDoc, increment } = await import('firebase/firestore');
+    const { doc, getDoc, updateDoc, increment, addDoc, collection, serverTimestamp } = await import('firebase/firestore');
     
     // Level 1 Inviter (A)
     const subRef = doc(db, 'users', subordinateId);
@@ -177,6 +201,14 @@ async function fetchAndAwardTaskCommission(subordinateId: string, subordinateLev
         income: increment(commA),
         teamTasks: increment(commA)
       });
+      await addDoc(collection(db, 'commissions'), {
+        userId: inviterA_Id,
+        amount: commA,
+        type: 'team_task',
+        label: `Subordinate Task Commission`,
+        subordinatePhone: subData?.phoneNumber || 'Subordinate',
+        timestamp: serverTimestamp()
+      });
     }
 
     // Level 2 Inviter (B)
@@ -193,6 +225,14 @@ async function fetchAndAwardTaskCommission(subordinateId: string, subordinateLev
         income: increment(commB),
         teamTasks: increment(commB)
       });
+      await addDoc(collection(db, 'commissions'), {
+        userId: inviterB_Id,
+        amount: commB,
+        type: 'team_task',
+        label: `Indirect Subordinate Task Commission`,
+        subordinatePhone: subData?.phoneNumber || 'Subordinate',
+        timestamp: serverTimestamp()
+      });
     }
 
     // Level 3 Inviter (C)
@@ -208,6 +248,14 @@ async function fetchAndAwardTaskCommission(subordinateId: string, subordinateLev
       await updateDoc(cRef, {
         income: increment(commC),
         teamTasks: increment(commC)
+      });
+      await addDoc(collection(db, 'commissions'), {
+        userId: inviterC_Id,
+        amount: commC,
+        type: 'team_task',
+        label: `Indirect Subordinate Task Commission`,
+        subordinatePhone: subData?.phoneNumber || 'Subordinate',
+        timestamp: serverTimestamp()
       });
     }
   } catch (err) {
@@ -348,12 +396,28 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  const playNextAd = () => {
+    if (!activeAd || ads.length === 0) {
+      setShowAdPopup(false);
+      setActiveAd(null);
+      return;
+    }
+    const currentIndex = ads.findIndex(a => a.id === activeAd.id);
+    const nextIndex = currentIndex + 1;
+    if (nextIndex < ads.length) {
+      setActiveAd(ads[nextIndex]);
+      setAdCountdown(10);
+    } else {
+      setShowAdPopup(false);
+      setActiveAd(null);
+    }
+  };
+
   const triggerAd = (loadedAds?: any[]) => {
     const activeAds = loadedAds || ads;
     if (activeAds && activeAds.length > 0) {
       if (showAdPopup) return; // Already showing, don't overlap
-      const randomIndex = Math.floor(Math.random() * activeAds.length);
-      setActiveAd(activeAds[randomIndex]);
+      setActiveAd(activeAds[0]);
       setAdCountdown(10);
       setShowAdPopup(true);
     }
@@ -367,11 +431,10 @@ export default function App() {
         setAdCountdown(prev => prev - 1);
       }, 1000);
     } else if (showAdPopup && adCountdown === 0) {
-      setShowAdPopup(false);
-      setActiveAd(null);
+      playNextAd();
     }
     return () => clearTimeout(timer);
-  }, [showAdPopup, adCountdown]);
+  }, [showAdPopup, adCountdown, activeAd, ads]);
 
   // Trigger ad check when entering HOME tab
   useEffect(() => {
@@ -745,7 +808,7 @@ export default function App() {
     }
 
     try {
-      const { doc, getDoc, updateDoc, increment } = await import('firebase/firestore');
+      const { doc, getDoc, updateDoc, increment, collection, addDoc, serverTimestamp } = await import('firebase/firestore');
       const userRef = doc(db, 'users', getUserDocId());
       const snap = await getDoc(userRef);
       
@@ -770,6 +833,14 @@ export default function App() {
       await updateDoc(userRef, {
         personal: increment(100.00),
         onboardingClaimed: true
+      });
+
+      await addDoc(collection(db, 'bonuses'), {
+        userId: getUserDocId(),
+        amount: 100.00,
+        type: 'onboarding',
+        label: 'Welcome Onboarding Bonus',
+        timestamp: serverTimestamp()
       });
 
       localStorage.setItem('earnova_onboarding_bonus_claimed', 'true');
@@ -868,7 +939,7 @@ export default function App() {
 
       // Update Firestore if logged in
       if (getUserDocId()) {
-        const { updateDoc, doc, increment, arrayUnion } = await import('firebase/firestore');
+        const { updateDoc, doc, increment, arrayUnion, addDoc, collection, serverTimestamp } = await import('firebase/firestore');
         await updateDoc(doc(db, 'users', getUserDocId()), {
           personal: increment(-deposit + prevDeposit),
           income: increment(levelBonus),
@@ -876,6 +947,16 @@ export default function App() {
           currentLevel: level,
           signedContracts: arrayUnion(level)
         });
+
+        if (levelBonus > 0) {
+          await addDoc(collection(db, 'bonuses'), {
+            userId: getUserDocId(),
+            amount: levelBonus,
+            type: 'level_upgrade',
+            label: `${level} Signing Bonus`,
+            timestamp: serverTimestamp()
+          });
+        }
         
         // Award level upgrade commission to inviters (A, B, C)
         fetchAndAwardUpgradeCommission(getUserDocId(), level);
@@ -1448,8 +1529,7 @@ export default function App() {
               <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
                 <button 
                   onClick={() => {
-                    setShowAdPopup(false);
-                    setActiveAd(null);
+                    playNextAd();
                     if (WebApp?.HapticFeedback) {
                       WebApp.HapticFeedback.impactOccurred('light');
                     }
@@ -1490,13 +1570,12 @@ export default function App() {
                 <div className="pt-1">
                   <button 
                     onClick={() => {
-                      setShowAdPopup(false);
-                      setActiveAd(null);
+                      playNextAd();
                       if (WebApp?.HapticFeedback) {
                         WebApp.HapticFeedback.impactOccurred('light');
                       }
                     }}
-                    className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 rounded-2xl text-[9.5px] font-black uppercase tracking-widest transition-all active:scale-95 cursor-pointer font-sans"
+                    className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 rounded-[20px] text-[9.5px] font-black uppercase tracking-widest transition-all active:scale-95 cursor-pointer font-sans"
                   >
                     Cancel
                   </button>
@@ -3522,14 +3601,108 @@ function ProfilePage({
   tasksClaimedToday: number
 }) {
   const [showFeeTooltip, setShowFeeTooltip] = useState(false);
+  const [historyItems, setHistoryItems] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const fetchHistory = async () => {
+      try {
+        const { collection, getDocs, query, where } = await import('firebase/firestore');
+        const { db, getUserDocId } = await import('./lib/firebase');
+        const uid = getUserDocId();
+        if (!uid) {
+          setLoadingHistory(false);
+          return;
+        }
+
+        const q = query(
+          collection(db, 'taskHistory'),
+          where('userId', '==', uid)
+        );
+        const snapshot = await getDocs(q);
+        if (!active) return;
+
+        const items: any[] = [];
+        snapshot.forEach((d) => {
+          const data = d.data();
+          let dateObj: Date | null = null;
+          if (data.timestamp) {
+            dateObj = data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
+          }
+          items.push({
+            id: d.id,
+            commission: Number(data.commission) || 0,
+            date: dateObj
+          });
+        });
+
+        if (active) {
+          setHistoryItems(items);
+        }
+      } catch (err) {
+        console.error("Error fetching task history for stats:", err);
+      } finally {
+        if (active) setLoadingHistory(false);
+      }
+    };
+
+    fetchHistory();
+    return () => {
+      active = false;
+    };
+  }, [tasksClaimedToday]);
 
   const matchedJob = JOBS.find(j => j.level === currentJobLevel) || JOBS[0];
+
+  // Precise date calculations based on local time
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+  const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const yesterdayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+
+  // Calendar week starting Monday
+  const dayOfWeek = now.getDay();
+  const distanceToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distanceToMonday);
+  weekStart.setHours(0, 0, 0, 0);
+
+  // Calendar month starting 1st
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  let dbTodaySum = 0;
+  let dbYesterdaySum = 0;
+  let dbWeekSum = 0;
+  let dbMonthSum = 0;
+
+  historyItems.forEach((item) => {
+    if (item.date) {
+      const time = item.date.getTime();
+      if (time >= todayStart.getTime() && time <= todayEnd.getTime()) {
+        dbTodaySum += item.commission;
+      }
+      if (time >= yesterdayStart.getTime() && time <= yesterdayEnd.getTime()) {
+        dbYesterdaySum += item.commission;
+      }
+      if (time >= weekStart.getTime()) {
+        dbWeekSum += item.commission;
+      }
+      if (time >= monthStart.getTime()) {
+        dbMonthSum += item.commission;
+      }
+    }
+  });
+
   const todayTaskIncomeValue = tasksClaimedToday * matchedJob.eachOrder;
-  const todayOverallIncome = todayTaskIncomeValue + (balance.recommended || 0) + (balance.teamTasks || 0);
+  const todayOverallIncome = Math.max(dbTodaySum, todayTaskIncomeValue);
+  const yesterdayOverallIncome = dbYesterdaySum;
+  const weeklyOverallIncome = Math.max(dbWeekSum, todayOverallIncome);
+  const monthlyOverallIncome = Math.max(dbMonthSum, weeklyOverallIncome);
 
   const totalOverallIncome = balance.income + (balance.recommended || 0) + (balance.teamTasks || 0);
-  const monthlyOverallIncome = balance.income + (balance.recommended || 0) + (balance.teamTasks || 0);
-  const weeklyOverallIncome = balance.income + (balance.recommended || 0) + (balance.teamTasks || 0);
 
   const sections = [
     { label: t('financial_record'), icon: ScrollText, color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -3701,7 +3874,7 @@ function ProfilePage({
       <div className="px-4 grid grid-cols-2 gap-2">
         {[
           { label: t('balance_income'), value: todayOverallIncome.toFixed(2), color: "text-blue-600" },
-          { label: "Yesterday", value: (todayOverallIncome * 0.9).toFixed(2), color: "text-blue-600" },
+          { label: "Yesterday", value: yesterdayOverallIncome.toFixed(2), color: "text-blue-600" },
           { label: "This month", value: monthlyOverallIncome.toFixed(2), color: "text-blue-600" },
           { label: "This week", value: weeklyOverallIncome.toFixed(2), color: "text-blue-600" },
           { label: t('balance_total'), value: totalOverallIncome.toFixed(2), color: "text-blue-600" },

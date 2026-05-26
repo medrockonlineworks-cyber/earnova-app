@@ -6,6 +6,7 @@ import { JOBS } from '../constants';
 import { cn } from '../lib/utils';
 import { db, auth, getUserDocId } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, onSnapshot } from 'firebase/firestore';
+import { compressImage } from '../lib/imageCompressor';
 
 interface RechargeModalProps {
   onClose: () => void;
@@ -54,14 +55,20 @@ export function RechargeModal({ onClose, onRecharge, initialAmount, t }: Recharg
     setStep('PAY');
   };
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setScreenshot(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressedBase64 = await compressImage(file, 1000, 1000, 0.75);
+        setScreenshot(compressedBase64);
+      } catch (err) {
+        console.error("Error compressing recipe screenshot, falling back:", err);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setScreenshot(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 

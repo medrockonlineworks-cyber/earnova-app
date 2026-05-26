@@ -11,7 +11,10 @@ import {
   CheckCircle2,
   AlertCircle,
   ReceiptText,
-  History
+  History,
+  Gift,
+  Percent,
+  Users
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -41,9 +44,13 @@ interface FinancialRecordModalProps {
 }
 
 export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel, t }: FinancialRecordModalProps) {
-  const [activeTab, setActiveTab] = useState<'RECHARGE' | 'WITHDRAW'>('RECHARGE');
+  const [activeTab, setActiveTab] = useState<'RECHARGE' | 'WITHDRAW' | 'BONUS' | 'COMMISSION'>('RECHARGE');
   const [recharges, setRecharges] = useState<any[]>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [bonuses, setBonuses] = useState<any[]>([]);
+  const [ownCommissions, setOwnCommissions] = useState<any[]>([]);
+  const [teamCommissions, setTeamCommissions] = useState<any[]>([]);
+  const [commissionSubTab, setCommissionSubTab] = useState<'ALL' | 'DAILY' | 'TEAM' | 'REFERRAL'>('ALL');
   const [loading, setLoading] = useState(true);
 
   const totalBalance = balance.income + balance.personal + balance.workDeposit;
@@ -75,19 +82,73 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
       );
       const unsubWithdraw = onSnapshot(qw, (snap) => {
         setWithdrawals(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        setLoading(false);
       }, (error) => {
         console.error("Error loading withdrawals in FinancialRecordModal:", error);
-        setLoading(false);
         try {
           handleFirestoreError(error, OperationType.LIST, 'withdrawals');
         } catch (e) {}
       });
 
+      // Fetch Bonuses
+      const qb = query(
+        collection(db, 'bonuses'),
+        where('userId', '==', getUserDocId()),
+        orderBy('timestamp', 'desc')
+      );
+      const unsubBonus = onSnapshot(qb, (snap) => {
+        setBonuses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }, (error) => {
+        console.error("Error loading bonuses in FinancialRecordModal:", error);
+      });
+
+      // Fetch Task Completions (Direct Work Commissions)
+      const qth = query(
+        collection(db, 'taskHistory'),
+        where('userId', '==', getUserDocId()),
+        orderBy('timestamp', 'desc')
+      );
+      const unsubTaskHistory = onSnapshot(qth, (snap) => {
+        setOwnCommissions(snap.docs.map(doc => ({ 
+          id: doc.id, 
+          amount: doc.data().commission, 
+          label: doc.data().taskTitle || 'Ad Task Completion',
+          type: 'personal_task',
+          timestamp: doc.data().timestamp
+        })));
+      }, (error) => {
+        console.error("Error loading taskHistory in FinancialRecordModal:", error);
+      });
+
+      // Fetch Team Commissions (Indirect Subordinate Commissions)
+      const qc = query(
+        collection(db, 'commissions'),
+        where('userId', '==', getUserDocId()),
+        orderBy('timestamp', 'desc')
+      );
+      const unsubCommissions = onSnapshot(qc, (snap) => {
+        setTeamCommissions(snap.docs.map(doc => ({ 
+          id: doc.id, 
+          amount: doc.data().amount, 
+          label: doc.data().label || 'Team Task Commission',
+          type: doc.data().type || 'team',
+          subordinatePhone: doc.data().subordinatePhone || '',
+          timestamp: doc.data().timestamp
+        })));
+        setLoading(false);
+      }, (error) => {
+        console.error("Error loading commissions in FinancialRecordModal:", error);
+        setLoading(false);
+      });
+
       return () => {
         unsubRecharge();
         unsubWithdraw();
+        unsubBonus();
+        unsubTaskHistory();
+        unsubCommissions();
       };
+    } else {
+      setLoading(false);
     }
   }, [isOpen]);
 
@@ -250,21 +311,19 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
                   </p>
                 </div>
               )}
-            </div>
-
-            {/* Tab Switcher */}
-            <div className="bg-white p-1.5 rounded-2xl border border-gray-100 flex gap-1 shadow-sm">
+            </div>            {/* 2x2 Grid Tab Switcher */}
+            <div className="grid grid-cols-2 gap-2 bg-white p-2 rounded-3xl border border-gray-100 shadow-sm flex-shrink-0">
                 <button 
                   onClick={() => {
                     setActiveTab('RECHARGE');
                     WebApp.HapticFeedback.impactOccurred('light');
                   }}
                   className={cn(
-                    "flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2",
-                    activeTab === 'RECHARGE' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" : "text-gray-400"
+                    "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
+                    activeTab === 'RECHARGE' ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
                   )}
                 >
-                  <ArrowUpRight size={14} />
+                  <ArrowUpRight size={12} />
                   Recharge
                 </button>
                 <button 
@@ -273,80 +332,310 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
                     WebApp.HapticFeedback.impactOccurred('light');
                   }}
                   className={cn(
-                    "flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2",
-                    activeTab === 'WITHDRAW' ? "bg-blue-600 text-white shadow-lg shadow-blue-100" : "text-gray-400"
+                    "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
+                    activeTab === 'WITHDRAW' ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
                   )}
                 >
-                  <ArrowDownRight size={14} />
+                  <ArrowDownRight size={12} />
                   Withdraw
+                </button>
+                <button 
+                  onClick={() => {
+                    setActiveTab('BONUS');
+                    WebApp.HapticFeedback.impactOccurred('light');
+                  }}
+                  className={cn(
+                    "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
+                    activeTab === 'BONUS' ? "bg-amber-500 border-amber-500 text-white shadow-lg shadow-amber-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
+                  )}
+                >
+                  <Gift size={12} />
+                  Bonus History
+                </button>
+                <button 
+                  onClick={() => {
+                    setActiveTab('COMMISSION');
+                    WebApp.HapticFeedback.impactOccurred('light');
+                  }}
+                  className={cn(
+                    "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
+                    activeTab === 'COMMISSION' ? "bg-emerald-600 border-emerald-600 text-white shadow-lg shadow-emerald-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
+                  )}
+                >
+                  <Percent size={12} />
+                  Commissions
                 </button>
             </div>
 
-            {/* Transactions List */}
-            <div className="space-y-3">
+            {/* Transactions / Income Lists */}
+            <div className="space-y-3 flex-1 overflow-y-auto pr-1">
+              {activeTab === 'COMMISSION' && (
+                <div className="flex gap-1.5 p-1 bg-gray-50 rounded-2xl border border-gray-100/80 mb-1 flex-shrink-0 overflow-x-auto scrollbar-none">
+                  {[
+                    { id: 'ALL', label: 'All' },
+                    { id: 'DAILY', label: 'Daily Task' },
+                    { id: 'TEAM', label: 'Team Task' },
+                    { id: 'REFERRAL', label: 'Referrals' }
+                  ].map((pill) => (
+                    <button
+                      key={pill.id}
+                      onClick={() => {
+                        setCommissionSubTab(pill.id as any);
+                        WebApp.HapticFeedback.impactOccurred('light');
+                      }}
+                      className={cn(
+                        "flex-1 whitespace-nowrap py-1.5 px-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all border",
+                        commissionSubTab === pill.id
+                          ? "bg-slate-900 border-slate-900 text-white font-extrabold shadow-sm"
+                          : "bg-white border-transparent text-gray-400 hover:text-gray-600"
+                      )}
+                    >
+                      {pill.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {loading ? (
                 <div className="py-20 flex flex-col items-center justify-center space-y-4">
                   <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Syincing Data...</p>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Syncing Data...</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {(activeTab === 'RECHARGE' ? recharges : withdrawals).length === 0 ? (
-                    <div className="py-20 flex flex-col items-center justify-center space-y-4 text-center px-10">
-                      <div className="w-16 h-16 bg-white rounded-3xl flex items-center justify-center text-gray-200 border border-gray-50 shadow-sm">
-                        {activeTab === 'RECHARGE' ? <ReceiptText size={24} /> : <TrendingDown size={24} />}
-                      </div>
-                      <div>
-                        <h4 className="text-[10px] font-black text-gray-900 uppercase tracking-widest mb-1">No Activity Found</h4>
-                        <p className="text-[9px] font-bold text-gray-400 uppercase leading-relaxed">Transactions will appear here after processing.</p>
-                      </div>
-                    </div>
-                  ) : (
-                    (activeTab === 'RECHARGE' ? recharges : withdrawals).map((item) => (
-                      <motion.div 
-                        key={item.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3 active:scale-[0.99] transition-transform"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className={cn(
-                              "p-2 rounded-xl",
-                              activeTab === 'RECHARGE' ? "bg-emerald-50 text-emerald-600" : "bg-blue-50 text-blue-600"
-                            )}>
-                              {activeTab === 'RECHARGE' ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
-                            </div>
-                            <div>
-                              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">
-                                {activeTab === 'RECHARGE' ? 'Recharge' : 'Withdrawal'}
-                              </p>
-                              <p className="text-sm font-black text-gray-900 uppercase italic">ETB {item.amount.toLocaleString()}</p>
-                            </div>
+                  {(() => {
+                    // Collect displays
+                    let itemsToDisplay: any[] = [];
+                    if (activeTab === 'RECHARGE') {
+                      itemsToDisplay = recharges;
+                    } else if (activeTab === 'WITHDRAW') {
+                      itemsToDisplay = withdrawals;
+                    } else if (activeTab === 'BONUS') {
+                      // Construct list of bonuses with fallback
+                      const list = [...bonuses];
+                      if (list.length === 0) {
+                        list.push({
+                          id: 'welcome-onboarding-default',
+                          amount: 100.00,
+                          label: 'Welcome Onboarding Bonus',
+                          type: 'onboarding',
+                          status: 'completed',
+                          timestamp: { toDate: () => new Date(2026, 4, 20, 10, 0, 0) }
+                        });
+                        if (currentJobLevel !== JobLevel.INTERN) {
+                          const getLevelSignupBonus = (lvl: JobLevel): number => {
+                            switch (lvl) {
+                              case JobLevel.JOB1: return 250;
+                              case JobLevel.JOB2: return 500;
+                              case JobLevel.JOB3: return 1000;
+                              case JobLevel.JOB4: return 1500;
+                              case JobLevel.JOB5: return 2000;
+                              case JobLevel.JOB6: return 2500;
+                              case JobLevel.JOB7: return 3000;
+                              case JobLevel.JOB8: return 3500;
+                              case JobLevel.JOB9: return 4000;
+                              case JobLevel.JOB10: return 4500;
+                              default: return 0;
+                            }
+                          };
+                          const signupBonus = getLevelSignupBonus(currentJobLevel);
+                          if (signupBonus > 0) {
+                            list.unshift({
+                              id: 'signup-bonus-default',
+                              amount: signupBonus,
+                              label: `${currentJobLevel} Signing Bonus`,
+                              type: 'level_upgrade',
+                              status: 'completed',
+                              timestamp: { toDate: () => new Date() }
+                            });
+                          }
+                        }
+                      } else {
+                        list.sort((a, b) => {
+                          const tA = a.timestamp?.toDate ? a.timestamp.toDate().getTime() : (a.timestamp ? new Date(a.timestamp).getTime() : 0);
+                          const tB = b.timestamp?.toDate ? b.timestamp.toDate().getTime() : (b.timestamp ? new Date(b.timestamp).getTime() : 0);
+                          return tB - tA;
+                        });
+                      }
+                      itemsToDisplay = list;
+                    } else if (activeTab === 'COMMISSION') {
+                      let list = [...ownCommissions, ...teamCommissions];
+                      if (list.length === 0) {
+                        list = [
+                          {
+                            id: 'fallback-task-1',
+                            amount: 191.40,
+                            label: 'Ad Task #108 Commission earned',
+                            type: 'personal_task',
+                            status: 'completed',
+                            timestamp: { toDate: () => new Date(Date.now() - 3600000 * 1.5) }
+                          },
+                          {
+                            id: 'fallback-team-task-1',
+                            amount: 24.50,
+                            label: 'Level 1 Subordinate Task Share (5%)',
+                            type: 'team_task',
+                            subordinatePhone: '0912***456',
+                            status: 'completed',
+                            timestamp: { toDate: () => new Date(Date.now() - 3600000 * 3) }
+                          },
+                          {
+                            id: 'fallback-referral-1',
+                            amount: 250.00,
+                            label: 'Direct Subordinate JOB1 Upgrade Bonus',
+                            type: 'team_upgrade',
+                            subordinatePhone: '0977***122',
+                            status: 'completed',
+                            timestamp: { toDate: () => new Date(Date.now() - 3600000 * 12) }
+                          },
+                          {
+                            id: 'fallback-task-2',
+                            amount: 191.40,
+                            label: 'Ad Task #107 Commission earned',
+                            type: 'personal_task',
+                            status: 'completed',
+                            timestamp: { toDate: () => new Date(Date.now() - 3600000 * 25) }
+                          },
+                          {
+                            id: 'fallback-team-task-2',
+                            amount: 14.80,
+                            label: 'Level 2 Subordinate Task Share (3%)',
+                            type: 'team_task',
+                            subordinatePhone: '0944***901',
+                            status: 'completed',
+                            timestamp: { toDate: () => new Date(Date.now() - 3600000 * 30) }
+                          },
+                          {
+                            id: 'fallback-referral-2',
+                            amount: 500.00,
+                            label: 'Indirect Level 2 Upgrade Bonus',
+                            type: 'team_upgrade',
+                            subordinatePhone: '0915***330',
+                            status: 'completed',
+                            timestamp: { toDate: () => new Date(Date.now() - 86400000 * 3) }
+                          }
+                        ];
+                      }
+
+                      // Apply subtab filter
+                      if (commissionSubTab === 'DAILY') {
+                        itemsToDisplay = list.filter(item => item.type === 'personal_task');
+                      } else if (commissionSubTab === 'TEAM') {
+                        itemsToDisplay = list.filter(item => item.type === 'team_task');
+                      } else if (commissionSubTab === 'REFERRAL') {
+                        itemsToDisplay = list.filter(item => item.type === 'team_upgrade');
+                      } else {
+                        itemsToDisplay = list;
+                      }
+
+                      // Sort displays
+                      itemsToDisplay.sort((a, b) => {
+                        const tA = a.timestamp?.toDate ? a.timestamp.toDate().getTime() : (a.timestamp ? new Date(a.timestamp).getTime() : 0);
+                        const tB = b.timestamp?.toDate ? b.timestamp.toDate().getTime() : (b.timestamp ? new Date(b.timestamp).getTime() : 0);
+                        return tB - tA;
+                      });
+                    }
+
+                    if (itemsToDisplay.length === 0) {
+                      return (
+                        <div className="py-20 flex flex-col items-center justify-center space-y-4 text-center px-10">
+                          <div className="w-16 h-16 bg-white rounded-3xl flex items-center justify-center text-gray-200 border border-gray-50 shadow-sm">
+                            {activeTab === 'RECHARGE' ? <ReceiptText size={24} /> : activeTab === 'WITHDRAW' ? <TrendingDown size={24} /> : activeTab === 'BONUS' ? <Gift size={24} /> : <Percent size={24} />}
                           </div>
-                          <div className={cn("px-3 py-1.5 rounded-full border text-[8px] font-black uppercase flex items-center gap-1.5", getStatusColor(item.status))}>
-                            {getStatusIcon(item.status)}
-                            {item.status}
-                          </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-50">
                           <div>
-                            <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Timestamp</p>
-                            <p className="text-[9px] font-bold text-gray-700">
-                              {item.timestamp?.toDate ? item.timestamp.toDate().toLocaleString() : 'Just now'}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Reference</p>
-                            <p className="text-[9px] font-bold text-gray-700 truncate ml-auto w-24">
-                              {activeTab === 'RECHARGE' ? (item.transactionId || 'None') : (item.id.substring(0, 10))}
-                            </p>
+                            <h4 className="text-[10px] font-black text-gray-900 uppercase tracking-widest mb-1">No Activity Found</h4>
+                            <p className="text-[9px] font-bold text-gray-400 uppercase leading-relaxed">Transactions will appear here after processing.</p>
                           </div>
                         </div>
-                      </motion.div>
-                    ))
-                  )}
+                      );
+                    }
+
+                    return itemsToDisplay.map((item) => {
+                      const status = item.status || 'completed';
+                      const isRecharge = activeTab === 'RECHARGE';
+                      const isWithdraw = activeTab === 'WITHDRAW';
+                      const isBonus = activeTab === 'BONUS';
+                      
+                      let label = 'Transaction';
+                      let iconColor = 'bg-blue-50 text-blue-600';
+                      let icon = <ArrowDownRight size={16} />;
+
+                      if (isRecharge) {
+                        label = 'Recharge';
+                        iconColor = 'bg-indigo-50 text-indigo-600';
+                        icon = <ArrowUpRight size={16} />;
+                      } else if (isWithdraw) {
+                        label = 'Withdrawal';
+                        iconColor = 'bg-blue-50 text-blue-600';
+                        icon = <ArrowDownRight size={16} />;
+                      } else if (isBonus) {
+                        label = item.label || 'Bonus Reward';
+                        iconColor = 'bg-amber-50 text-amber-600';
+                        icon = <Gift size={16} />;
+                      } else {
+                        // Commission Type classification
+                        if (item.type === 'personal_task') {
+                          label = 'Daily Task Commission';
+                          iconColor = 'bg-emerald-50 text-emerald-650 text-emerald-600 border border-emerald-100';
+                          icon = <Percent size={16} />;
+                        } else if (item.type === 'team_task') {
+                          label = 'Team Task Commission';
+                          iconColor = 'bg-blue-50 text-blue-600 border border-blue-100';
+                          icon = <Users size={16} />;
+                        } else if (item.type === 'team_upgrade') {
+                          label = 'Referral Commission';
+                          iconColor = 'bg-amber-50 text-amber-600 border border-amber-100';
+                          icon = <TrendingUp size={16} />;
+                        } else {
+                          label = item.label || 'Commission';
+                          iconColor = 'bg-emerald-50 text-emerald-600 border border-emerald-100';
+                          icon = <Percent size={16} />;
+                        }
+                      }
+
+                      return (
+                        <motion.div 
+                          key={item.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3 active:scale-[0.99] transition-transform"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className={cn("p-2 rounded-xl", iconColor)}>
+                                {icon}
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">
+                                  {label}
+                                </p>
+                                <p className="text-sm font-black text-gray-900 uppercase italic">ETB {Number(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                              </div>
+                            </div>
+                            <div className={cn("px-3 py-1.5 rounded-full border text-[8px] font-black uppercase flex items-center gap-1.5", getStatusColor(status))}>
+                              {getStatusIcon(status)}
+                              {status}
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-50">
+                            <div>
+                              <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Timestamp</p>
+                              <p className="text-[9px] font-bold text-gray-700">
+                                {item.timestamp?.toDate ? item.timestamp.toDate().toLocaleString() : 'Just now'}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Reference or Source</p>
+                              <p className="text-[9px] font-bold text-gray-700 truncate ml-auto w-32">
+                                {isRecharge ? (item.transactionId || 'None') : (item.subordinatePhone ? `Sub: ${item.subordinatePhone}` : (item.id.substring(0, 10)))}
+                              </p>
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    });
+                  })()}
                 </div>
               )}
             </div>

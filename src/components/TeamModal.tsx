@@ -100,10 +100,19 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
     };
   }, []);
 
+  const level1Registered = teamData.level1.length;
+  const level1Regular = teamData.level1.filter(m => m.rawLevel !== 'INTERN').length;
+
+  const level2Registered = teamData.level2.length;
+  const level2Regular = teamData.level2.filter(m => m.rawLevel !== 'INTERN').length;
+
+  const level3Registered = teamData.level3.length;
+  const level3Regular = teamData.level3.filter(m => m.rawLevel !== 'INTERN').length;
+
   const stats = [
-    { label: t('income_level1'), value: String(teamData.level1.length), color: 'text-blue-600' },
-    { label: t('income_level2'), value: String(teamData.level2.length), color: 'text-indigo-600' },
-    { label: t('income_level3'), value: String(teamData.level3.length), color: 'text-rose-600' },
+    { label: t('income_level1'), value: `${level1Registered}/${level1Regular}`, color: 'text-blue-600' },
+    { label: t('income_level2'), value: `${level2Registered}/${level2Regular}`, color: 'text-indigo-600' },
+    { label: t('income_level3'), value: `${level3Registered}/${level3Regular}`, color: 'text-rose-600' },
   ];
 
   const currentList = activeTab === 'L1' ? teamData.level1 : activeTab === 'L2' ? teamData.level2 : teamData.level3;
@@ -138,8 +147,9 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
           <div className="grid grid-cols-3 gap-2">
             {stats.map((stat, i) => (
               <div key={i} className="bg-gray-50 p-3 rounded-2xl flex flex-col items-center justify-center text-center border border-gray-100">
-                <span className={cn("text-xl font-black italic leading-none", stat.color)}>{stat.value}</span>
+                <span className={cn("text-xl font-black italic leading-none tracking-tight", stat.color)}>{stat.value}</span>
                 <span className="text-[8px] font-black uppercase text-gray-400 mt-1 tracking-tighter leading-tight">{stat.label}</span>
+                <span className="text-[6.5px] font-extrabold text-slate-350 text-gray-400/85 uppercase tracking-wider mt-0.5">Total / Regular</span>
               </div>
             ))}
           </div>

@@ -41,6 +41,7 @@ import {
 } from 'firebase/firestore';
 import { cn } from '../lib/utils';
 import WebApp from '@twa-dev/sdk';
+import { compressImage } from '../lib/imageCompressor';
 
 type AdminTab = 'DEPOSITS' | 'WITHDRAWALS' | 'USERS' | 'CHATS' | 'TASKS' | 'ADS' | 'PAYMENTS';
 type UserFilter = 'ALL' | 'INTERN' | 'REGULAR';
@@ -445,7 +446,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -454,17 +455,17 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
       return;
     }
 
-    // Read the file and parse it into Base64 format
-    const reader = new FileReader();
-    reader.onload = () => {
-      setSelectedAdFileBase64(reader.result as string);
+    setSelectedAdFileName("Compressing image... " + file.name);
+    try {
+      // Scale down to max 1000px and compress to high-quality JPEG (around 40-100KB)
+      const compressedBase64 = await compressImage(file, 1000, 1000, 0.75);
+      setSelectedAdFileBase64(compressedBase64);
       setSelectedAdFileName(file.name);
-    };
-    reader.onerror = (err) => {
-      console.error("FileReader error:", err);
-      alert("Failed to read image file.");
-    };
-    reader.readAsDataURL(file);
+    } catch (err: any) {
+      console.error("Compression error:", err);
+      alert("Failed to read and compress image check your file format.");
+      setSelectedAdFileName("");
+    }
   };
 
   const handleUploadAd = async (e: any) => {
