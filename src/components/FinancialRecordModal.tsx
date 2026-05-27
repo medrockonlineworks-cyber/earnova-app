@@ -69,7 +69,7 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
             collection(db, 'recharges'),
             where('userId', '==', userId),
             orderBy('timestamp', 'desc'),
-            limit(50)
+            limit(1000)
           );
           const rechargeSnap = await getDocs(qr);
           if (!active) return;
@@ -80,7 +80,7 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
             collection(db, 'withdrawals'),
             where('userId', '==', userId),
             orderBy('timestamp', 'desc'),
-            limit(50)
+            limit(1000)
           );
           const withdrawSnap = await getDocs(qw);
           if (!active) return;
@@ -91,7 +91,7 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
             collection(db, 'bonuses'),
             where('userId', '==', userId),
             orderBy('timestamp', 'desc'),
-            limit(50)
+            limit(1000)
           );
           const bonusSnap = await getDocs(qb);
           if (!active) return;
@@ -102,7 +102,7 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
             collection(db, 'taskHistory'),
             where('userId', '==', userId),
             orderBy('timestamp', 'desc'),
-            limit(50)
+            limit(1000)
           );
           const taskHistorySnap = await getDocs(qth);
           if (!active) return;
@@ -119,7 +119,7 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
             collection(db, 'commissions'),
             where('userId', '==', userId),
             orderBy('timestamp', 'desc'),
-            limit(50)
+            limit(1000)
           );
           const commissionsSnap = await getDocs(qc);
           if (!active) return;

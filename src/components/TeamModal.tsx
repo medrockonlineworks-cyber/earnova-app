@@ -38,11 +38,11 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
           return;
         }
 
-        // Level 1: Fetch users invited by the current user (limit to 100 for safety)
+        // Level 1: Fetch users invited by the current user (high limit for full history)
         const q1 = query(
           collection(db, 'users'), 
           where('invitedBy', '==', currentPhone),
-          limit(100)
+          limit(1000)
         );
         const q1Snap = await getDocs(q1);
         const level1Users: any[] = [];
@@ -55,43 +55,46 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
 
         const level1Ids = level1Users.map(u => u.phoneNumber || u.id).filter(Boolean);
 
-        // Level 2: Fetch users invited by Level 1 users (limit to 100 max)
+        // Helper to query users in chunks of 30 due to Firestore "in" limits
+        const fetchInChunks = async (ids: string[]) => {
+          const results: any[] = [];
+          const chunkSize = 30;
+          const promises = [];
+          for (let i = 0; i < ids.length; i += chunkSize) {
+            const chunk = ids.slice(i, i + chunkSize);
+            if (chunk.length > 0) {
+              const q = query(
+                collection(db, 'users'),
+                where('invitedBy', 'in', chunk),
+                limit(1000)
+              );
+              promises.push(getDocs(q));
+            }
+          }
+          const snaps = await Promise.all(promises);
+          snaps.forEach(snapCol => {
+            snapCol.forEach(snap => {
+              const data = snap.data();
+              if (data.status !== 'inactive') {
+                results.push({ id: snap.id, ...data });
+              }
+            });
+          });
+          return results;
+        };
+
+        // Level 2: Fetch users invited by Level 1 users (load all history)
         let level2Users: any[] = [];
         if (level1Ids.length > 0) {
-          // Chunk to avoid Firestore 'in' limit of 30
-          const chunkLimit = level1Ids.slice(0, 30);
-          const q2 = query(
-            collection(db, 'users'),
-            where('invitedBy', 'in', chunkLimit),
-            limit(100)
-          );
-          const q2Snap = await getDocs(q2);
-          q2Snap.forEach(snap => {
-            const data = snap.data();
-            if (data.status !== 'inactive') {
-              level2Users.push({ id: snap.id, ...data });
-            }
-          });
+          level2Users = await fetchInChunks(level1Ids);
         }
 
         const level2Ids = level2Users.map(u => u.phoneNumber || u.id).filter(Boolean);
 
-        // Level 3: Fetch users invited by Level 2 users
+        // Level 3: Fetch users invited by Level 2 users (load all history)
         let level3Users: any[] = [];
         if (level2Ids.length > 0) {
-          const chunkLimit3 = level2Ids.slice(0, 30);
-          const q3 = query(
-            collection(db, 'users'),
-            where('invitedBy', 'in', chunkLimit3),
-            limit(100)
-          );
-          const q3Snap = await getDocs(q3);
-          q3Snap.forEach(snap => {
-            const data = snap.data();
-            if (data.status !== 'inactive') {
-              level3Users.push({ id: snap.id, ...data });
-            }
-          });
+          level3Users = await fetchInChunks(level2Ids);
         }
 
         const mapUserToMember = (u: any) => {

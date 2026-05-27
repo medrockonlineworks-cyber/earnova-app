@@ -44,7 +44,7 @@ export function TaskHistoryModal({ isOpen, onClose, t }: TaskHistoryModalProps) 
             collection(db, 'taskHistory'),
             where('userId', '==', activeUserId),
             orderBy('timestamp', 'desc'),
-            limit(50)
+            limit(1000)
           );
           const snapshot = await getDocs(q);
           if (!active) return;

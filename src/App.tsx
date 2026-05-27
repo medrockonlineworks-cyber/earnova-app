@@ -271,7 +271,7 @@ export default function App() {
   const [currentJobLevel, setCurrentJobLevel] = useState<JobLevel>(JobLevel.INTERN);
   const [balance, setBalance] = useState({ income: 0.00, personal: 0.00, workDeposit: 0.00, recommended: 0.00, teamTasks: 0.00 });
   const [userStatus, setUserStatus] = useState<string>('active');
-  const [userProfile, setUserProfile] = useState<{ phoneNumber?: string; fullName?: string; email?: string } | null>(null);
+  const [userProfile, setUserProfile] = useState<{ phoneNumber?: string; fullName?: string; email?: string; avatarUrl?: string; avatarSeed?: string; createdAt?: string } | null>(null);
   const [showSupportOnSuspended, setShowSupportOnSuspended] = useState(false);
   const [signedContracts, setSignedContracts] = useState<string[]>(() => {
     const saved = localStorage.getItem('earnova_signed_contracts');
@@ -538,31 +538,27 @@ export default function App() {
     }
   };
 
-  // Synchronize advertisements list from Firestore with session cache to minimize reads
+  // Synchronize advertisements list from Firestore (real-time snapshot listener)
   useEffect(() => {
-    const cachedAds = sessionStorage.getItem('earnova_cached_ads');
-    if (cachedAds) {
-      try {
-        setAds(JSON.parse(cachedAds));
-        return;
-      } catch (e) {}
-    }
-
-    const fetchAds = async () => {
-      try {
-        const { collection, getDocs } = await import('firebase/firestore');
-        const listSnap = await getDocs(collection(db, 'advertisements'));
-        const list: any[] = [];
-        listSnap.forEach((docSnap) => {
-          list.push({ id: docSnap.id, ...docSnap.data() });
-        });
-        setAds(list);
-        sessionStorage.setItem('earnova_cached_ads', JSON.stringify(list));
-      } catch (err) {
-        console.warn("Advertisements fetch error (cached/skipped):", err);
+    const q = query(collection(db, 'advertisements'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setAds(list);
+      sessionStorage.setItem('earnova_cached_ads', JSON.stringify(list));
+    }, (err) => {
+      console.warn("Advertisements realtime onSnapshot error (using cache fallback):", err);
+      const cached = sessionStorage.getItem('earnova_cached_ads');
+      if (cached) {
+        try {
+          setAds(JSON.parse(cached));
+        } catch (e) {}
       }
-    };
-    fetchAds();
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const playNextAd = () => {
@@ -683,7 +679,10 @@ export default function App() {
           setUserProfile({
             phoneNumber: localData.phoneNumber || userDocId,
             fullName: localData.fullName || '',
-            email: localData.email || ''
+            email: localData.email || '',
+            avatarUrl: localData.avatarUrl || '',
+            avatarSeed: localData.avatarSeed || '',
+            createdAt: localData.createdAt || ''
           });
           setBalance({
             personal: localData.personal || 0,
@@ -749,7 +748,10 @@ export default function App() {
           setUserProfile({
             phoneNumber: data.phoneNumber || userDocId,
             fullName: data.fullName || '',
-            email: data.email || ''
+            email: data.email || '',
+            avatarUrl: data.avatarUrl || '',
+            avatarSeed: data.avatarSeed || '',
+            createdAt: data.createdAt || ''
           });
           if (data.personal !== undefined || data.income !== undefined || data.workDeposit !== undefined) {
             setBalance({
@@ -1379,6 +1381,9 @@ export default function App() {
             fullName={userProfile?.fullName || 'Member'}
             onInstallApp={handleInstallApp}
             tasksClaimedToday={tasksClaimedToday}
+            avatarSeed={userProfile?.avatarSeed || ''}
+            createdAt={userProfile?.createdAt || ''}
+            avatarUrl={userProfile?.avatarUrl || ''}
           />
         );
       default:
@@ -3069,77 +3074,51 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Load database tasks from Firestore tasks collection
+  // Load database tasks from Firestore tasks collection (real-time snapshot listener)
   useEffect(() => {
-    // If we have cached tasks and they are fresh (less than 10 mins old), use them to save Firestore reads
-    if (globalTasksCache && (Date.now() - globalTasksLastFetchedAt < 600000)) {
-      setDbTasks(globalTasksCache);
-      return;
-    }
-
-    const fetchTasks = async () => {
-      try {
-        const { collection, getDocs } = await import('firebase/firestore');
-        const tasksSnap = await getDocs(collection(db, 'tasks'));
-        const tasks = tasksSnap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
-        globalTasksCache = tasks;
-        globalTasksLastFetchedAt = Date.now();
-        setDbTasks(tasks);
-      } catch (err) {
-        console.error("Firestore loading tasks error in TaskPage", err);
-        try {
-          handleFirestoreError(err, OperationType.LIST, 'tasks');
-        } catch (formattedErr) {}
+    const q = query(collection(db, 'tasks'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const tasks = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+      globalTasksCache = tasks;
+      globalTasksLastFetchedAt = Date.now();
+      setDbTasks(tasks);
+    }, (err) => {
+      console.warn("Realtime tasks snapshot listener failed (using cache):", err);
+      if (globalTasksCache) {
+        setDbTasks(globalTasksCache);
       }
-    };
+    });
 
-    fetchTasks();
+    return () => unsubscribe();
   }, []);
 
-  // Sync historical claims from user profile in Firestore
+  // Sync historical claims from user profile in Firestore (real-time snapshot listener)
   useEffect(() => {
     const activeUserId = getUserDocId();
     if (!activeUserId) return;
 
-    // Check if we already fetched completed IDs for this user during this session
-    if (globalCompletedTaskIdsCache[activeUserId] && (Date.now() - (globalCompletedLastFetchedAt[activeUserId] || 0) < 600000)) {
-      setDbCompletedIds(globalCompletedTaskIdsCache[activeUserId]);
-      return;
-    }
-
-    // Try loading immediately from localStorage to eliminate latency & queries entirely
-    try {
-      const savedClaims = localStorage.getItem(`earnova_historical_claimed_${activeUserId}`);
-      if (savedClaims) {
-        const parsed = JSON.parse(savedClaims);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setDbCompletedIds(parsed);
-          globalCompletedTaskIdsCache[activeUserId] = parsed;
+    const userRef = doc(db, 'users', activeUserId);
+    const unsubscribe = onSnapshot(userRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data && data.completedTaskIds) {
+          setDbCompletedIds(data.completedTaskIds);
+          globalCompletedTaskIdsCache[activeUserId] = data.completedTaskIds;
           globalCompletedLastFetchedAt[activeUserId] = Date.now();
+          localStorage.setItem(`earnova_historical_claimed_${activeUserId}`, JSON.stringify(data.completedTaskIds));
         }
       }
-    } catch (e) {}
-
-    const fetchUserCompleted = async () => {
+    }, (err) => {
+      console.warn("Realtime claims snapshot listener failed (using cache):", err);
       try {
-        const { doc, getDoc } = await import('firebase/firestore');
-        const userRef = doc(db, 'users', activeUserId);
-        const snap = await getDoc(userRef);
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data && data.completedTaskIds) {
-            setDbCompletedIds(data.completedTaskIds);
-            globalCompletedTaskIdsCache[activeUserId] = data.completedTaskIds;
-            globalCompletedLastFetchedAt[activeUserId] = Date.now();
-            localStorage.setItem(`earnova_historical_claimed_${activeUserId}`, JSON.stringify(data.completedTaskIds));
-          }
+        const savedClaims = localStorage.getItem(`earnova_historical_claimed_${activeUserId}`);
+        if (savedClaims) {
+          setDbCompletedIds(JSON.parse(savedClaims));
         }
-      } catch (err) {
-        console.error("Error loading historical claims in TaskPage", err);
-      }
-    };
+      } catch (e) {}
+    });
 
-    fetchUserCompleted();
+    return () => unsubscribe();
   }, []);
 
   // Fetch or set existing allocated tasks from localStorage and clear old fallbacks if present
@@ -3973,7 +3952,10 @@ function ProfilePage({
   userPhone,
   fullName,
   onInstallApp,
-  tasksClaimedToday
+  tasksClaimedToday,
+  avatarSeed,
+  createdAt,
+  avatarUrl
 }: { 
   balance: { income: number, personal: number, workDeposit: number, recommended: number, teamTasks: number }, 
   currentJobLevel: JobLevel, 
@@ -3982,11 +3964,43 @@ function ProfilePage({
   userPhone: string,
   fullName: string,
   onInstallApp: () => void,
-  tasksClaimedToday: number
+  tasksClaimedToday: number,
+  avatarSeed?: string,
+  createdAt?: string,
+  avatarUrl?: string
 }) {
   const [showFeeTooltip, setShowFeeTooltip] = useState(false);
   const [historyItems, setHistoryItems] = useState<any[]>([]);
+  const [bonusItems, setBonusItems] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+
+  const getLuxuryAvatar = () => {
+    if (avatarUrl && avatarUrl.startsWith('http')) {
+      return avatarUrl;
+    }
+    const presets: { [key: string]: string } = {
+      bugatti: 'https://images.unsplash.com/photo-1600706432505-1a8db0dd1d20?auto=format&fit=crop&w=150&h=150&q=80',
+      lamborghini: 'https://images.unsplash.com/photo-1621135802920-133df287f89c?auto=format&fit=crop&w=150&h=150&q=80',
+      rollsroyce: 'https://images.unsplash.com/photo-1632245889029-e406faaa34cd?auto=format&fit=crop&w=150&h=150&q=80',
+      ferrari: 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&w=150&h=150&q=80',
+      gwagon: 'https://images.unsplash.com/photo-1520050206274-a1ae446fa3ca?auto=format&fit=crop&w=150&h=150&q=80',
+      privatejet1: 'https://images.unsplash.com/photo-1540962351504-03099e0a754b?auto=format&fit=crop&w=150&h=150&q=80',
+      privatejet2: 'https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?auto=format&fit=crop&w=150&h=150&q=80',
+      privatejet3: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=150&h=150&q=80',
+      Felix: 'https://images.unsplash.com/photo-1600706432505-1a8db0dd1d20?auto=format&fit=crop&w=150&h=150&q=80',
+      Zoey: 'https://images.unsplash.com/photo-1621135802920-133df287f89c?auto=format&fit=crop&w=150&h=150&q=80',
+      Aneka: 'https://images.unsplash.com/photo-1632245889029-e406faaa34cd?auto=format&fit=crop&w=150&h=150&q=80',
+      Jack: 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&w=150&h=150&q=80',
+      Oliver: 'https://images.unsplash.com/photo-1520050206274-a1ae446fa3ca?auto=format&fit=crop&w=150&h=150&q=80',
+      Lily: 'https://images.unsplash.com/photo-1540962351504-03099e0a754b?auto=format&fit=crop&w=150&h=150&q=80',
+      Milo: 'https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?auto=format&fit=crop&w=150&h=150&q=80',
+      Cleo: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=150&h=150&q=80',
+    };
+    if (avatarSeed && presets[avatarSeed]) {
+      return presets[avatarSeed];
+    }
+    return presets.bugatti;
+  };
 
   useEffect(() => {
     let active = true;
@@ -4037,7 +4051,7 @@ function ProfilePage({
           collection(db, 'taskHistory'),
           where('userId', '==', uid),
           orderBy('timestamp', 'desc'),
-          limit(150)
+          limit(1000)
         );
         const snapshot = await getDocs(q);
         if (!active) return;
@@ -4056,6 +4070,32 @@ function ProfilePage({
           });
         });
 
+        // Query all bonuses starting since day one
+        const qb = query(
+          collection(db, 'bonuses'),
+          where('userId', '==', uid),
+          orderBy('timestamp', 'desc'),
+          limit(1000)
+        );
+        const bonusSnapshot = await getDocs(qb);
+        if (!active) return;
+
+        const bItems: any[] = [];
+        bonusSnapshot.forEach((d) => {
+          const data = d.data();
+          let dateObj: Date | null = null;
+          if (data.timestamp) {
+            dateObj = data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
+          }
+          bItems.push({
+            id: d.id,
+            amount: Number(data.amount) || 0,
+            date: dateObj
+          });
+        });
+
+        setBonusItems(bItems);
+
         // Update memory cache
         globalHistoryCache = items;
         globalHistoryLastFetchedAt = Date.now();
@@ -4070,6 +4110,13 @@ function ProfilePage({
             dateStr: it.date ? it.date.toISOString() : null
           }));
           localStorage.setItem(`earnova_stats_history_${uid}`, JSON.stringify(serialized));
+          
+          const serializedBonuses = bItems.map(it => ({
+            id: it.id,
+            amount: it.amount,
+            dateStr: it.date ? it.date.toISOString() : null
+          }));
+          localStorage.setItem(`earnova_stats_bonuses_${uid}`, JSON.stringify(serializedBonuses));
         } catch (e) {
           console.warn("localStorage history write error:", e);
         }
@@ -4082,6 +4129,19 @@ function ProfilePage({
         if (active && localBackup.length > 0) {
           setHistoryItems(localBackup);
         }
+        try {
+          const storedB = localStorage.getItem(`earnova_stats_bonuses_${uid}`);
+          if (storedB && active) {
+            const parsed = JSON.parse(storedB);
+            if (Array.isArray(parsed)) {
+              setBonusItems(parsed.map(b => ({
+                id: b.id,
+                amount: b.amount,
+                date: b.dateStr ? new Date(b.dateStr) : null
+              })));
+            }
+          }
+        } catch (e) {}
       } finally {
         if (active) setLoadingHistory(false);
       }
@@ -4144,6 +4204,30 @@ function ProfilePage({
 
   const totalOverallIncome = balance.income + (balance.recommended || 0) + (balance.teamTasks || 0);
 
+  const registrationDateStr = createdAt ? new Date(createdAt).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  }) : 'May 24, 2026';
+
+  const endContractDateStr = createdAt ? new Date(new Date(createdAt).getTime() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  }) : 'May 24, 2027';
+
+  let totalCommissionsEarned = 0;
+  historyItems.forEach((item) => {
+    totalCommissionsEarned += item.commission;
+  });
+
+  let totalBonusesEarned = 0;
+  bonusItems.forEach((b) => {
+    totalBonusesEarned += b.amount;
+  });
+
+  const lifetimeGeneratedSum = totalCommissionsEarned + totalBonusesEarned + (balance.recommended || 0) + (balance.teamTasks || 0);
+
   const sections = [
     { label: t('financial_record'), icon: ScrollText, color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { label: t('support_center'), icon: HelpCircle, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -4170,7 +4254,7 @@ function ProfilePage({
         <div className="flex items-center gap-3">
           <div className="relative">
             <div className="w-14 h-14 rounded-2xl overflow-hidden bg-gray-200 border-2 border-white shadow-lg">
-              <img src="https://api.dicebear.com/7.x/pixel-art/svg?seed=Felix" alt="Avatar" className="w-full h-full object-cover" />
+              <img src={getLuxuryAvatar()} alt="Avatar" className="w-full h-full object-cover" />
             </div>
             <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center">
               <CheckSquare size={8} className="text-white" />
@@ -4301,24 +4385,31 @@ function ProfilePage({
       </div>
 
       <div className="px-4 text-center">
-        <p className="text-[9px] font-black italic text-blue-300 uppercase tracking-widest leading-none">
-          Date: 2026-05-24 ~ 2027-05-24
+        <p className="text-[10px] font-black uppercase text-blue-600 tracking-wider mb-1">
+          Registered on: {registrationDateStr}
+        </p>
+        <p className="text-[8px] font-black italic text-gray-400 uppercase tracking-widest leading-none">
+          Cycle: {registrationDateStr} ~ {endContractDateStr}
         </p>
       </div>
 
       {/* Stats Grid */}
       <div className="px-4 grid grid-cols-2 gap-2">
         {[
-          { label: t('balance_income'), value: todayOverallIncome.toFixed(2), color: "text-blue-600" },
-          { label: "Yesterday", value: yesterdayOverallIncome.toFixed(2), color: "text-blue-600" },
-          { label: "This month", value: monthlyOverallIncome.toFixed(2), color: "text-blue-600" },
-          { label: "This week", value: weeklyOverallIncome.toFixed(2), color: "text-blue-600" },
-          { label: t('balance_total'), value: totalOverallIncome.toFixed(2), color: "text-blue-600" },
-          { label: "Recommended", value: balance.recommended.toFixed(2), color: "text-blue-600" },
-          { label: "Team tasks", value: balance.teamTasks.toFixed(2), color: "text-blue-600" },
-          { label: t('balance_work'), value: balance.workDeposit.toLocaleString(), color: "text-blue-600" },
+          { label: t('balance_income'), value: todayOverallIncome.toFixed(2), color: "text-blue-600 font-semibold" },
+          { label: "Yesterday", value: yesterdayOverallIncome.toFixed(2), color: "text-blue-600 font-semibold" },
+          { label: "This month", value: monthlyOverallIncome.toFixed(2), color: "text-blue-600 font-semibold" },
+          { label: "This week", value: weeklyOverallIncome.toFixed(2), color: "text-blue-600 font-semibold" },
+          { label: t('balance_total'), value: totalOverallIncome.toFixed(2), color: "text-blue-600 font-semibold" },
+          { label: "Recommended", value: balance.recommended.toFixed(2), color: "text-blue-600 font-semibold" },
+          { label: "Team tasks", value: balance.teamTasks.toFixed(2), color: "text-blue-600 font-semibold" },
+          { label: t('balance_work'), value: balance.workDeposit.toLocaleString(), color: "text-blue-600 font-semibold" },
         ].map((stat, idx) => (
-          <div key={`profile-stat-${stat.label}-${idx}`} className="bg-white p-3 rounded-2xl flex flex-col items-center justify-center text-center space-y-1 border border-gray-100 shadow-sm cursor-pointer active:brightness-95 transition-all" onClick={() => handleAction(stat.label)}>
+          <div 
+            key={`profile-stat-${stat.label}-${idx}`} 
+            className="bg-white p-3 rounded-2xl flex flex-col items-center justify-center text-center space-y-1 border border-gray-100 shadow-sm cursor-pointer active:brightness-95 transition-all"
+            onClick={() => handleAction(stat.label)}
+          >
             <p className="text-[8px] font-black text-gray-400 uppercase tracking-tight leading-none h-4 flex items-center">{stat.label}</p>
             <p className={cn("text-md font-black", stat.color)}>{stat.value}</p>
           </div>

@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Lock, Mail, Phone, ChevronRight, CheckCircle2, Shield, Eye, EyeOff, User } from 'lucide-react';
+import { X, Lock, Mail, Phone, ChevronRight, CheckCircle2, Shield, Eye, EyeOff, User, Image } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import WebApp from '@twa-dev/sdk';
 import { cn } from '../lib/utils';
@@ -12,7 +12,7 @@ interface AccountSettingsModalProps {
   initialView?: SettingView;
 }
 
-type SettingView = 'MENU' | 'PASSWORD' | 'EMAIL' | 'PHONE' | 'ADMIN' | 'NAME';
+type SettingView = 'MENU' | 'PASSWORD' | 'EMAIL' | 'PHONE' | 'ADMIN' | 'NAME' | 'AVATAR';
 
 export function AccountSettingsModal({ onClose, t, initialView }: AccountSettingsModalProps) {
   const [view, setView] = useState<SettingView>(initialView || 'MENU');
@@ -24,6 +24,10 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
   const [nameError, setNameError] = useState('');
   const [isSubmittingName, setIsSubmittingName] = useState(false);
 
+  const [selectedAvatarSeed, setSelectedAvatarSeed] = useState('bugatti');
+  const [avatarError, setAvatarError] = useState('');
+  const [isSubmittingAvatar, setIsSubmittingAvatar] = useState(false);
+
   useEffect(() => {
     async function loadCurrentName() {
       try {
@@ -34,6 +38,9 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
           const data = docSnap.data();
           if (data && data.fullName) {
             setNewName(data.fullName);
+          }
+          if (data && data.avatarSeed) {
+            setSelectedAvatarSeed(data.avatarSeed);
           }
         }
       } catch (err) {
@@ -73,10 +80,39 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
     }
   };
 
+  const handleUpdateAvatar = async () => {
+    setIsSubmittingAvatar(true);
+    setAvatarError('');
+    try {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      const userDocRef = doc(db, 'users', getUserDocId());
+      const presets: { [key: string]: string } = {
+        bugatti: 'https://images.unsplash.com/photo-1600706432505-1a8db0dd1d20?auto=format&fit=crop&w=150&h=150&q=80',
+        lamborghini: 'https://images.unsplash.com/photo-1621135802920-133df287f89c?auto=format&fit=crop&w=150&h=150&q=80',
+        rollsroyce: 'https://images.unsplash.com/photo-1632245889029-e406faaa34cd?auto=format&fit=crop&w=150&h=150&q=80',
+        ferrari: 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&w=150&h=150&q=80',
+        gwagon: 'https://images.unsplash.com/photo-1520050206274-a1ae446fa3ca?auto=format&fit=crop&w=150&h=150&q=80',
+        privatejet1: 'https://images.unsplash.com/photo-1540962351504-03099e0a754b?auto=format&fit=crop&w=150&h=150&q=80',
+        privatejet2: 'https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?auto=format&fit=crop&w=150&h=150&q=80',
+        privatejet3: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=150&h=150&q=80',
+      };
+      const url = presets[selectedAvatarSeed] || presets.bugatti;
+      await updateDoc(userDocRef, {
+        avatarSeed: selectedAvatarSeed,
+        avatarUrl: url
+      });
+      handleUpdate();
+    } catch (err: any) {
+      setAvatarError(err.message || 'Error occurred while updating avatar.');
+    } finally {
+      setIsSubmittingAvatar(false);
+    }
+  };
+
   const renderContent = () => {
     if (isSuccess) {
       return (
-        <div className="py-12 flex flex-col items-center justify-center space-y-4">
+        <div className="py-12 flex flex-col items-center justify-center space-y-4 p-6">
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
@@ -95,7 +131,7 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
     switch (view) {
       case 'PASSWORD':
         return (
-          <div className="space-y-4">
+          <div className="space-y-4 p-6">
             <div className="space-y-2">
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Current Password</label>
               <div className="relative">
@@ -143,7 +179,7 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
         );
       case 'EMAIL':
         return (
-          <div className="space-y-4">
+          <div className="space-y-4 p-6">
             <div className="space-y-2">
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Current Email</label>
               <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 text-xs font-bold text-gray-400">user@example.com</div>
@@ -159,7 +195,7 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
         );
       case 'PHONE':
         return (
-          <div className="space-y-4">
+          <div className="space-y-4 p-6">
             <div className="space-y-2">
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Current Phone</label>
               <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 text-xs font-bold text-gray-400">+251 92 619 3920</div>
@@ -198,6 +234,63 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
             </button>
           </div>
         );
+      case 'AVATAR':
+        const avatarPresets = [
+          { seed: 'bugatti', label: 'Bugatti', url: 'https://images.unsplash.com/photo-1600706432505-1a8db0dd1d20?auto=format&fit=crop&w=150&h=150&q=80' },
+          { seed: 'lamborghini', label: 'Lambo', url: 'https://images.unsplash.com/photo-1621135802920-133df287f89c?auto=format&fit=crop&w=150&h=150&q=80' },
+          { seed: 'rollsroyce', label: 'Rolls-P', url: 'https://images.unsplash.com/photo-1632245889029-e406faaa34cd?auto=format&fit=crop&w=150&h=150&q=80' },
+          { seed: 'ferrari', label: 'Ferrari', url: 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&w=150&h=150&q=80' },
+          { seed: 'gwagon', label: 'G-Wagon', url: 'https://images.unsplash.com/photo-1520050206274-a1ae446fa3ca?auto=format&fit=crop&w=150&h=150&q=80' },
+          { seed: 'privatejet1', label: 'Gulfstream', url: 'https://images.unsplash.com/photo-1540962351504-03099e0a754b?auto=format&fit=crop&w=150&h=150&q=80' },
+          { seed: 'privatejet2', label: 'Falcon Jet', url: 'https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?auto=format&fit=crop&w=150&h=150&q=80' },
+          { seed: 'privatejet3', label: 'Boeing BBJ', url: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=150&h=150&q=80' }
+        ];
+        return (
+          <div className="space-y-4 p-6">
+            <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-2 text-center">Select Your Luxury Vehicle Avatar</h3>
+            <div className="grid grid-cols-4 gap-4 max-h-[220px] overflow-y-auto p-1">
+              {avatarPresets.map((p) => {
+                const url = p.url;
+                const isSelected = selectedAvatarSeed === p.seed;
+                return (
+                  <button
+                    key={p.seed}
+                    onClick={() => {
+                      setSelectedAvatarSeed(p.seed);
+                      WebApp.HapticFeedback.impactOccurred('light');
+                    }}
+                    className={cn(
+                      "flex flex-col items-center p-2 rounded-2xl border transition-all active:scale-95 bg-white relative",
+                      isSelected ? "border-blue-600 bg-blue-50/50 ring-2 ring-blue-500/20" : "border-gray-100 hover:border-gray-200"
+                    )}
+                  >
+                    <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-50 border border-gray-100 shadow-sm mb-1.5">
+                      <img src={url} alt={p.label} className="w-full h-full object-cover" />
+                    </div>
+                    <span className="text-[8px] font-black text-gray-500 uppercase tracking-tight text-center leading-none h-4 flex items-center justify-center">{p.label}</span>
+                    {isSelected && (
+                      <div className="absolute top-1 right-1 bg-blue-600 text-white p-0.5 rounded-full ring-2 ring-white">
+                        <CheckCircle2 size={10} className="stroke-[3]" />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            
+            {avatarError && (
+              <p className="text-[10px] font-bold text-red-500 ml-1">{avatarError}</p>
+            )}
+
+            <button 
+              onClick={handleUpdateAvatar} 
+              disabled={isSubmittingAvatar}
+              className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-200 active:scale-95 transition-all disabled:opacity-50 mt-2"
+            >
+              {isSubmittingAvatar ? 'Setting...' : 'Select Avatar'}
+            </button>
+          </div>
+        );
       case 'ADMIN':
         return <AdminCouncil onBack={() => setView('MENU')} />;
       default:
@@ -206,6 +299,7 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
             <div className="space-y-3">
               {[
                 { id: 'NAME', label: 'Change Name / ስም መቀየር', desc: 'Update display name / ስምዎን ያዘምኑ', icon: User, color: 'text-amber-500', bg: 'bg-amber-100/50' },
+                { id: 'AVATAR', label: 'Change Avatar / አቫታር መቀየር', desc: 'Choose a premium profile picture / የመገለጫ ምስል ይምረጡ', icon: Image, color: 'text-indigo-600', bg: 'bg-indigo-50' },
                 { id: 'PASSWORD', label: 'Password Settings', desc: 'Secure your login', icon: Lock, color: 'text-blue-500', bg: 'bg-blue-50' },
                 { id: 'EMAIL', label: 'Email Address', desc: 'Manage your primary email', icon: Mail, color: 'text-indigo-500', bg: 'bg-indigo-50' },
                 { id: 'PHONE', label: 'Phone Number', desc: 'Registered mobile number', icon: Phone, color: 'text-emerald-500', bg: 'bg-emerald-50' },
@@ -261,7 +355,7 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
         exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 25, stiffness: 300 }}
         className={cn(
-          "relative w-full max-w-md rounded-t-[32px] sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col",
+          "relative w-full max-w-md rounded-t-[32px] sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]",
           view === 'ADMIN' ? 'bg-[#0A0F1E]' : 'bg-gray-50'
         )}
       >
@@ -285,11 +379,10 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
           </div>
         )}
 
-        <div className={cn(view === 'ADMIN' ? 'p-0' : 'p-0')}>
+        <div className="overflow-y-auto flex-shrink flex-grow min-h-0">
           {renderContent()}
+          {view !== 'ADMIN' && <div className="h-6" />}
         </div>
-        
-        {view !== 'ADMIN' && <div className="h-6" />}
       </motion.div>
     </div>
   );

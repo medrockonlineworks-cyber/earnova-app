@@ -36,7 +36,7 @@ export function RechargeHistoryModal({ isOpen, onClose, t }: RechargeHistoryModa
             collection(db, 'recharges'),
             where('userId', '==', uid),
             orderBy('timestamp', 'desc'),
-            limit(50)
+            limit(1000)
           );
           const snapshot = await getDocs(q);
           if (!active) return;

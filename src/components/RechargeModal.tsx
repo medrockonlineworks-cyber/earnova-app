@@ -5,7 +5,7 @@ import { X, ArrowUpCircle, Wallet, Check, Copy, Loader2 } from 'lucide-react';
 import { JOBS } from '../constants';
 import { cn } from '../lib/utils';
 import { db, auth, getUserDocId } from '../lib/firebase';
-import { collection, addDoc, serverTimestamp, doc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, onSnapshot } from 'firebase/firestore';
 import { compressImage } from '../lib/imageCompressor';
 
 interface RechargeModalProps {
@@ -30,36 +30,30 @@ export function RechargeModal({ onClose, onRecharge, initialAmount, t }: Recharg
   const [cbeHolder, setCbeHolder] = useState('Leykun jemaneh');
 
   useEffect(() => {
-    const cachedInfo = sessionStorage.getItem('earnova_cached_payment_info');
-    if (cachedInfo) {
-      try {
-        const data = JSON.parse(cachedInfo);
+    const unsub = onSnapshot(doc(db, 'system_config', 'payment_info'), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
         if (data.telebirrAccount) setTelebirrAccount(data.telebirrAccount);
         if (data.telebirrHolder) setTelebirrHolder(data.telebirrHolder);
         if (data.cbeAccount) setCbeAccount(data.cbeAccount);
         if (data.cbeHolder) setCbeHolder(data.cbeHolder);
-        return;
-      } catch (e) {}
-    }
-
-    const fetchPaymentInfo = async () => {
-      try {
-        const { getDoc } = await import('firebase/firestore');
-        const snap = await getDoc(doc(db, 'system_config', 'payment_info'));
-        if (snap.exists()) {
-          const data = snap.data();
+        sessionStorage.setItem('earnova_cached_payment_info', JSON.stringify(data));
+      }
+    }, (err) => {
+      console.warn("Could not onSnapshot system_config/payment_info (used cache fallback):", err);
+      const cachedInfo = sessionStorage.getItem('earnova_cached_payment_info');
+      if (cachedInfo) {
+        try {
+          const data = JSON.parse(cachedInfo);
           if (data.telebirrAccount) setTelebirrAccount(data.telebirrAccount);
           if (data.telebirrHolder) setTelebirrHolder(data.telebirrHolder);
           if (data.cbeAccount) setCbeAccount(data.cbeAccount);
           if (data.cbeHolder) setCbeHolder(data.cbeHolder);
-          sessionStorage.setItem('earnova_cached_payment_info', JSON.stringify(data));
-        }
-      } catch (err) {
-        console.warn("Could not fetch system_config/payment_info (used static defaults):", err);
+        } catch (e) {}
       }
-    };
+    });
 
-    fetchPaymentInfo();
+    return () => unsub();
   }, []);
 
   const handleNext = () => {
