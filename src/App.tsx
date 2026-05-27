@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import * as React from 'react';
+import { useState, useEffect, useRef } from 'react';
 import WebApp from '@twa-dev/sdk';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -406,6 +407,136 @@ export default function App() {
   const [showAdPopup, setShowAdPopup] = useState(false);
   const [activeAd, setActiveAd] = useState<any>(null);
   const [adCountdown, setAdCountdown] = useState(10);
+
+  // Pull-to-refresh Mechanism States & Event Handlers
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [pulling, setPulling] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [pullHeight, setPullHeight] = useState(0);
+  const [startY, setStartY] = useState(0);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!scrollContainerRef.current) return;
+    // Only allow pulling if we are at the very top of our scroll container
+    if (scrollContainerRef.current.scrollTop === 0) {
+      setStartY(e.touches[0].clientY);
+      setPulling(true);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!pulling || refreshing) return;
+    const currentY = e.touches[0].clientY;
+    const diff = currentY - startY;
+
+    if (diff > 0) {
+      // Soft elastic scaling
+      const dampedHeight = Math.min(100, Math.pow(diff, 0.8) * 1.8);
+      setPullHeight(dampedHeight);
+      
+      // Stop Telegram or mobile browser elastic bouncing
+      if (diff > 10 && e.cancelable) {
+        e.preventDefault();
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!pulling || refreshing) return;
+    setPulling(false);
+    if (pullHeight > 55) {
+      triggerPullRefresh();
+    } else {
+      setPullHeight(0);
+    }
+  };
+
+  // Support click-and-drag for desktop testing & flexibility
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!scrollContainerRef.current) return;
+    if (scrollContainerRef.current.scrollTop === 0) {
+      setStartY(e.clientY);
+      setPulling(true);
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!pulling || refreshing) return;
+    const diff = e.clientY - startY;
+    if (diff > 0) {
+      const dampedHeight = Math.min(100, Math.pow(diff, 0.8) * 1.8);
+      setPullHeight(dampedHeight);
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (!pulling || refreshing) return;
+    setPulling(false);
+    if (pullHeight > 55) {
+      triggerPullRefresh();
+    } else {
+      setPullHeight(0);
+    }
+  };
+
+  const triggerPullRefresh = async () => {
+    setRefreshing(true);
+    setPullHeight(60);
+
+    try {
+      // 1. Clear session cache and local caches to enforce fetching fresh data from Firestore
+      sessionStorage.removeItem('earnova_cached_ads');
+      sessionStorage.removeItem('earnova_cached_payment_info');
+      
+      globalTasksCache = null;
+      globalTasksLastFetchedAt = 0;
+      globalHistoryCache = null;
+      globalHistoryLastFetchedAt = 0;
+      globalHistoryCachedUid = '';
+      globalHistoryCachedClaimedCount = -1;
+
+      const activeUserId = getUserDocId();
+      if (activeUserId) {
+        delete globalCompletedTaskIdsCache[activeUserId];
+        delete globalCompletedLastFetchedAt[activeUserId];
+        localStorage.removeItem(`earnova_historical_claimed_${activeUserId}`);
+        localStorage.removeItem(`earnova_stats_history_${activeUserId}`);
+        localStorage.removeItem(`earnova_cache_withdrawals_${activeUserId}`);
+        localStorage.removeItem(`earnova_cache_recharges_${activeUserId}`);
+      }
+
+      // 2. Increment reload key to force clean, unmounted mount of pages and lists
+      setRefreshKey(prev => prev + 1);
+
+      // 3. Clear existing ads and trigger direct fetch to simulate visual progress
+      const { collection, getDocs } = await import('firebase/firestore');
+      const listSnap = await getDocs(collection(db, 'advertisements'));
+      const list: any[] = [];
+      listSnap.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setAds(list);
+      sessionStorage.setItem('earnova_cached_ads', JSON.stringify(list));
+
+      // 4. Trigger premium Telegram feedback vibration
+      try {
+        if (WebApp?.HapticFeedback) {
+          WebApp.HapticFeedback.notificationOccurred('success');
+        }
+      } catch (hapticErr) {}
+
+      showNotification('App refreshed successfully!', 'success');
+    } catch (err) {
+      console.warn("Pull-to-refresh reload error:", err);
+      showNotification('Refresh connection active', 'info');
+    } finally {
+      setTimeout(() => {
+        setRefreshing(false);
+        setPullHeight(0);
+      }, 700);
+    }
+  };
 
   // Synchronize advertisements list from Firestore with session cache to minimize reads
   useEffect(() => {
@@ -1370,10 +1501,40 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <main className="flex-1 overflow-y-auto relative">
+      <main 
+        ref={scrollContainerRef}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        className="flex-1 overflow-y-auto relative select-none"
+      >
+        {/* Pull-to-refresh Visual Indicator */}
+        <div 
+          style={{ height: `${pullHeight}px` }} 
+          className="overflow-hidden flex items-center justify-center bg-gray-50/80 border-b border-gray-200/30 transition-all duration-75 text-blue-600"
+        >
+          <div className="flex items-center gap-2">
+            {refreshing ? (
+              <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
+            ) : (
+              <RefreshCw 
+                className="w-4 h-4 text-blue-600 transition-transform duration-75" 
+                style={{ transform: `rotate(${pullHeight * 5}deg)` }}
+              />
+            )}
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+              {refreshing ? 'Syncing App Data...' : pullHeight > 55 ? 'Release to Refresh' : 'Pull down to refresh'}
+            </span>
+          </div>
+        </div>
+
         <AnimatePresence mode="wait">
           <motion.div
-            key={`page-container-${activePage}`}
+            key={`page-container-${activePage}-${refreshKey}`}
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -10 }}
