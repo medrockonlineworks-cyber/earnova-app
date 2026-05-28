@@ -1504,8 +1504,13 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                 </div>
 
                 <div className="space-y-3">
-                   {withdrawals
+                   {[...withdrawals]
                      .filter(w => (w.status || 'pending').toLowerCase() === withdrawalFilter)
+                     .sort((a, b) => {
+                       const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : (a.timestamp ? new Date(a.timestamp) : new Date(0));
+                       const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : (b.timestamp ? new Date(b.timestamp) : new Date(0));
+                       return dateB.getTime() - dateA.getTime();
+                     })
                      .map(item => (
                    <div key={item.id} className="bg-[#12182B]/60 border border-white/5 rounded-[32px] p-5 backdrop-blur-md">
                       <div className="flex items-center justify-between mb-4">
@@ -1514,6 +1519,20 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                           <div>
                             <p className="text-sm font-black italic text-white">ETB {item.amount.toLocaleString()}</p>
                             <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{item.wallet} WALLET</p>
+                             <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                               <p className="text-[8px] font-black uppercase text-amber-500 tracking-wider">Requested:</p>
+                               {(() => {
+                                 const reqDate = item.timestamp?.toDate ? item.timestamp.toDate() : (item.timestamp ? new Date(item.timestamp) : null);
+                                 const formattedReq = reqDate 
+                                   ? reqDate.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+                                   : null;
+                                 return (
+                                   <span className="text-[8px] font-bold text-slate-200 font-mono bg-[#0A0F1E]/80 border border-white/5 px-2 py-0.5 rounded-full leading-none">
+                                     {formattedReq || 'Pending Timestamp'}
+                                   </span>
+                                 );
+                               })()}
+                             </div>
                           </div>
                         </div>
                         <div className="text-right">
