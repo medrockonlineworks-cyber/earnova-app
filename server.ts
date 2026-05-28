@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
+import { runSalaryDistribution, initializeSalaryScheduler } from "./server/salaryService.js";
 
 function getLatestMtime(dir: string): number {
   let latest = 0;
@@ -55,6 +56,45 @@ async function startServer() {
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
+
+  // API router to manually trigger monthly position salary distributions
+  app.post("/api/admin/distribute-salaries", async (req, res) => {
+    try {
+      const results = await runSalaryDistribution();
+      res.json({ 
+        success: true, 
+        message: "Salary distribution process completed.", 
+        results 
+      });
+    } catch (err: any) {
+      console.error("Error triggering manual salary distribution:", err);
+      res.status(500).json({ 
+        success: false, 
+        error: err?.message || String(err) 
+      });
+    }
+  });
+
+  // Enable a GET-based trigger for ease of admin orchestration or webhook integration
+  app.get("/api/admin/distribute-salaries", async (req, res) => {
+    try {
+      const results = await runSalaryDistribution();
+      res.json({ 
+        success: true, 
+        message: "Salary distribution process completed.", 
+        results 
+      });
+    } catch (err: any) {
+      console.error("Error triggering manual salary distribution:", err);
+      res.status(500).json({ 
+        success: false, 
+        error: err?.message || String(err) 
+      });
+    }
+  });
+
+  // Initialize the monthly salaries background scheduler
+  initializeSalaryScheduler();
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

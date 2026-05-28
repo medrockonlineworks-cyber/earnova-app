@@ -24,7 +24,8 @@ import {
   ExternalLink,
   Search,
   Image,
-  RefreshCw
+  RefreshCw,
+  TrendingUp
 } from 'lucide-react';
 import { db, auth, handleFirestoreError, OperationType, isUserAdmin, getUserDocId } from '../lib/firebase';
 import { 
@@ -114,6 +115,13 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
   const [cbeAccount, setCbeAccount] = useState('1000419524747');
   const [cbeHolder, setCbeHolder] = useState('Leykun jemaneh');
   const [isUpdatingPayments, setIsUpdatingPayments] = useState(false);
+
+  // Monthly salaries states
+  const [distributingSalaries, setDistributingSalaries] = useState(false);
+  const [salaryResults, setSalaryResults] = useState<any[] | null>(null);
+  const [salaryError, setSalaryError] = useState<string | null>(null);
+  const [recentSalaries, setRecentSalaries] = useState<any[]>([]);
+  const [loadingSalaries, setLoadingSalaries] = useState(false);
 
   // Calculates Levels (A, B, C) direct & indirect subordinates
   const getActiveTeamLists = (managedUser: any) => {
@@ -292,6 +300,24 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
         if (data.telebirrHolder) setTelebirrHolder(data.telebirrHolder);
         if (data.cbeAccount) setCbeAccount(data.cbeAccount);
         if (data.cbeHolder) setCbeHolder(data.cbeHolder);
+      }
+
+      // Fetch monthly position salary payouts
+      try {
+        setLoadingSalaries(true);
+        const { getDocs, collection } = await import('firebase/firestore');
+        const salarySnap = await getDocs(collection(db, 'salary_payouts'));
+        const salaries = salarySnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        salaries.sort((a: any, b: any) => {
+          const tA = a.timestamp?.toDate ? a.timestamp.toDate().getTime() : (a.timestamp ? new Date(a.timestamp).getTime() : 0);
+          const tB = b.timestamp?.toDate ? b.timestamp.toDate().getTime() : (b.timestamp ? new Date(b.timestamp).getTime() : 0);
+          return tB - tA;
+        });
+        setRecentSalaries(salaries);
+      } catch (e) {
+        console.warn("Could not fetch salary payouts in admin council loading:", e);
+      } finally {
+        setLoadingSalaries(false);
       }
     } catch (err: any) {
       console.error("Error loading administrative data collections:", err);
@@ -805,6 +831,47 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
     { label: 'Regular Users', value: users.length ? regularCount : 36, color: 'text-blue-400' }
   ];
 
+  const handleDistributeSalaries = async () => {
+    setDistributingSalaries(true);
+    setSalaryError(null);
+    setSalaryResults(null);
+    WebApp.HapticFeedback.impactOccurred('medium');
+
+    try {
+      const res = await fetch("/api/admin/distribute-salaries", {
+        method: "POST"
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSalaryResults(data.results || []);
+        WebApp.HapticFeedback.notificationOccurred('success');
+        
+        // Refresh recent salaries count
+        try {
+          const { getDocs, collection } = await import('firebase/firestore');
+          const salarySnap = await getDocs(collection(db, 'salary_payouts'));
+          const salaries = salarySnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          salaries.sort((a: any, b: any) => {
+            const tA = a.timestamp?.toDate ? a.timestamp.toDate().getTime() : (a.timestamp ? new Date(a.timestamp).getTime() : 0);
+            const tB = b.timestamp?.toDate ? b.timestamp.toDate().getTime() : (b.timestamp ? new Date(b.timestamp).getTime() : 0);
+            return tB - tA;
+          });
+          setRecentSalaries(salaries);
+        } catch (e) {
+          console.warn("Could not reload salaries after distribution:", e);
+        }
+      } else {
+        throw new Error(data.error || "Failed to distribute salaries.");
+      }
+    } catch (err: any) {
+      console.error("Error distributing salaries:", err);
+      setSalaryError(err?.message || String(err));
+      WebApp.HapticFeedback.notificationOccurred('error');
+    } finally {
+      setDistributingSalaries(false);
+    }
+  };
+
   const handleExit = () => {
     WebApp.HapticFeedback.impactOccurred('medium');
     localStorage.removeItem('admin_console_activated');
@@ -948,6 +1015,176 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
               ))}
             </div>
           </div>
+
+          {/* Monthly Salaries Panel (Only for Users tab) */}
+          {activeTab === 'USERS' && (
+            <div className="bg-[#12182B]/80 border border-white/5 rounded-[24px] p-5 mb-6 relative z-10 backdrop-blur-md">
+              <div className="flex items-center justify-between gap-4 mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500">
+                    <TrendingUp size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-100">Monthly Position Salaries</h3>
+                    <p className="text-[9px] text-slate-400 font-bold">Pay salaries instantly to all qualified leaders based on their team volume.</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="text-[10px] text-slate-300 mb-4 bg-[#0A0F1E]/60 p-3 rounded-2xl space-y-1 font-semibold leading-relaxed">
+                <p>• Pays base salaries depending on level 1 direct reports & team tree depth.</p>
+                <p>• Ensures precise, secure single execution per user per month (e.g., YYYY-MM document locking).</p>
+                <p>• Adds transaction logs to <span className="text-amber-500 font-black">bonuses</span> of the respective recipients automatically.</p>
+              </div>
+
+              <div className="flex flex-wrap gap-2 items-center">
+                <button
+                  onClick={handleDistributeSalaries}
+                  disabled={distributingSalaries}
+                  className={cn(
+                    "px-5 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 flex items-center gap-2 cursor-pointer",
+                    distributingSalaries
+                      ? "bg-slate-700 text-slate-400 cursor-not-allowed"
+                      : "bg-amber-500 hover:bg-amber-600 text-[#0A0F1E] shadow-[0_0_15px_rgba(245,158,11,0.25)]"
+                  )}
+                >
+                  {distributingSalaries ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                      Paying Salaries...
+                    </>
+                  ) : (
+                    "Trigger Salary Distribution"
+                  )}
+                </button>
+
+                {salaryResults && (
+                  <button
+                    onClick={() => setSalaryResults(null)}
+                    className="px-4 py-3 bg-[#1A1F2E] border border-white/5 rounded-xl text-[9px] font-black uppercase text-gray-400 hover:text-white tracking-widest transition-all cursor-pointer"
+                  >
+                    Clear Results
+                  </button>
+                )}
+              </div>
+
+              {salaryError && (
+                <div className="mt-3 p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-[10px] font-bold text-rose-400 font-mono">
+                  Error: {salaryError}
+                </div>
+              )}
+
+              {salaryResults && (
+                <div className="mt-4 border-t border-white/5 pt-4 space-y-2">
+                  <h4 className="text-[10px] font-black uppercase text-amber-500 tracking-wider">Salary Distribution Results:</h4>
+                  {salaryResults.length === 0 ? (
+                    <p className="text-[9px] font-bold text-slate-500 uppercase">No eligible users found qualified for a pending salary payout today.</p>
+                  ) : (
+                    <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1 text-[9px] font-mono">
+                      {salaryResults.map((res: any, idx: number) => (
+                        <div key={idx} className={cn(
+                          "p-2.5 rounded-xl flex items-center justify-between gap-3 text-slate-300 font-semibold",
+                          res.status === "PAID" ? "bg-emerald-500/10 border border-emerald-500/10" : "bg-[#1A1F2E]/80"
+                        )}>
+                          <div>
+                            <span className="font-bold text-white">{res.fullName} ({res.userId})</span>
+                            <div className="text-[8px] text-slate-400">{res.position}</div>
+                          </div>
+                          <div className="text-right">
+                            <span className={cn(
+                              "font-black uppercase text-[8px] tracking-wider shrink-0 px-2 py-0.5 rounded-full",
+                              res.status === "PAID" ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-800 text-slate-400"
+                            )}>
+                              {res.status === "PAID" ? `+ ${res.salary} ETB` : res.status}
+                            </span>
+                            {res.error && <p className="text-[7px] text-rose-400 mt-1">{res.error}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Recently Paid Salaries Section */}
+              {(() => {
+                const now = new Date();
+                const utcTime = now.getTime();
+                const eatTime = new Date(utcTime + 3 * 60 * 60 * 1000);
+                const currentMonthStr = eatTime.toISOString().substring(0, 7);
+                const currentMonthName = eatTime.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+                const currentMonthSalaries = recentSalaries.filter(s => s.month === currentMonthStr);
+                const totalMonthPaid = currentMonthSalaries.reduce((acc, curr) => acc + (curr.salaryAmount || 0), 0);
+
+                return (
+                  <div className="mt-5 border-t border-white/5 pt-5 space-y-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-[10px] font-black uppercase text-amber-500 tracking-wider">Recently Paid Salaries ({currentMonthName})</h4>
+                        <p className="text-[8px] text-slate-400 font-bold">Audit records of leadership payouts executed in {currentMonthStr}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Total Paid This Month</span>
+                        <span className="text-xs font-black text-emerald-400 font-mono">
+                          ETB {totalMonthPaid.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {loadingSalaries ? (
+                      <div className="py-4 text-center text-[9px] font-black uppercase text-slate-500 tracking-widest animate-pulse">
+                        Refreshing Audit Log...
+                      </div>
+                    ) : currentMonthSalaries.length === 0 ? (
+                      <div className="bg-[#0A0F1E]/40 border border-white/5 p-4 rounded-xl text-center">
+                        <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">No salary payouts recorded for {currentMonthName} yet.</p>
+                      </div>
+                    ) : (
+                      <div className="max-h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                        {currentMonthSalaries.map((payout, idx) => {
+                          const payoutDate = payout.timestamp?.toDate 
+                            ? payout.timestamp.toDate() 
+                            : (payout.timestamp ? new Date(payout.timestamp) : null);
+                          const formattedDate = payoutDate 
+                            ? payoutDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) 
+                            : 'Unknown';
+
+                          return (
+                            <div 
+                              key={payout.id || idx} 
+                              className="p-3 bg-[#0A0F1E]/60 border border-white/5 rounded-2xl flex items-center justify-between gap-4 hover:border-amber-500/20 transition-all group"
+                            >
+                              <div className="space-y-0.5 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-[10px] font-black text-slate-200 truncate group-hover:text-amber-500 transition-colors">
+                                    {payout.fullName || 'User'}
+                                  </span>
+                                  <span className="text-[8px] font-mono font-bold text-slate-400">
+                                    ({payout.userId})
+                                  </span>
+                                </div>
+                                <div className="text-[8px] font-bold text-slate-400 uppercase tracking-tight">
+                                  {payout.position}
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <span className="text-[10px] font-black text-emerald-400 font-mono block">
+                                  + ETB {payout.salaryAmount?.toLocaleString() || '0'}
+                                </span>
+                                <span className="text-[7.5px] font-mono text-slate-500">
+                                  {formattedDate}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           {/* Sub-Filters (Only for Users) */}
           {activeTab === 'USERS' && (

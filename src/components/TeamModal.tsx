@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { X, Users, TrendingUp, UserCircle2 } from 'lucide-react';
+import { X, Users, TrendingUp, UserCircle2, AlertTriangle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import WebApp from '@twa-dev/sdk';
 import { cn } from '../lib/utils';
@@ -26,6 +26,8 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
     level3: TeamMember[];
   }>({ level1: [], level2: [], level3: [] });
   const [isLoading, setIsLoading] = useState(true);
+  const [quotaError, setQuotaError] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -121,10 +123,16 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
           });
           setIsLoading(false);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error fetching real team structure:', err);
         if (isMounted) {
           setIsLoading(false);
+          const errMsg = err?.message || String(err);
+          if (errMsg.toLowerCase().includes('quota exceeded') || errMsg.toLowerCase().includes('quota limit exceeded') || errMsg.toUpperCase().includes('RESOURCE_EXHAUSTED')) {
+            setQuotaError(true);
+          } else {
+            setErrorMsg(errMsg);
+          }
         }
       }
     }
@@ -224,6 +232,39 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
             <div className="py-20 text-center space-y-3">
               <div className="w-8 h-8 border-4 border-blue-600/30 border-t-blue-600 rounded-full animate-spin mx-auto" />
               <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Constructing Team Network...</p>
+            </div>
+          ) : quotaError ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center space-y-3 shadow-sm my-4">
+              <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 mx-auto">
+                <AlertTriangle size={24} />
+              </div>
+              <h3 className="text-sm font-black text-amber-800 uppercase tracking-tight">Database Read Quota Exceeded</h3>
+              <p className="text-[10px] leading-relaxed text-amber-700 font-medium">
+                The free tier Firestore daily read quota has been exhausted. To view more team records immediately, please upgrade your Firebase project to Spark with an enabled billing instrument or a Blaze pay-as-you-go plan.
+              </p>
+              <div className="pt-2">
+                <a 
+                  href="https://console.firebase.google.com/project/wise-shuttle-l8gvj/firestore/databases/ai-studio-1c828831-1caf-4d6d-981e-0e35caa43cc0/data?openUpgradeDialog=true"
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-block bg-amber-600 hover:bg-amber-700 text-white font-black text-[9px] uppercase tracking-wider px-4 py-2.5 rounded-xl transition-all shadow-md active:scale-95"
+                >
+                  Upgrade Database Quota
+                </a>
+              </div>
+              <p className="text-[8px] font-bold text-amber-600 uppercase tracking-wider">
+                Daily limits auto-reset at midnight PST.
+              </p>
+            </div>
+          ) : errorMsg ? (
+            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-center space-y-3 shadow-sm my-4">
+              <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center text-rose-600 mx-auto">
+                <AlertTriangle size={24} />
+              </div>
+              <h3 className="text-sm font-black text-rose-800 uppercase tracking-tight">Error Fetching Network</h3>
+              <p className="text-[10px] leading-relaxed text-rose-700 font-medium font-mono">
+                {errorMsg}
+              </p>
             </div>
           ) : currentList.length > 0 ? (
             currentList.map((member, i) => (

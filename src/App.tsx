@@ -937,7 +937,37 @@ export default function App() {
     showNotification(`Action: ${action} processed successfully!`);
   };
 
+  const checkEthiopianTimeLimit = () => {
+    const now = new Date();
+    // Ethiopia is in East Africa Time (EAT), which is UTC + 3 hours
+    const utcHour = now.getUTCHours();
+    const utcMin = now.getUTCMinutes();
+    const eatHour = (utcHour + 3) % 24;
+    const currentEATFormatted = `${String(eatHour).padStart(2, '0')}:${String(utcMin).padStart(2, '0')}`;
+
+    // Valid Ethiopian 4 to 8 o'clock windows:
+    // 1. Ethiopian Daytime 4 to 8 o'clock corresponds to 10:00 AM - 2:00 PM standard EAT (hour 10 to 13, and up to 14:00)
+    const isEthiopianDaytime = eatHour >= 10 && eatHour < 14;
+    // 2. Standard 4:00 AM to 8:00 AM standard EAT (hour 4 to 7, and up to 08:00)
+    const isWesternMorning = eatHour >= 4 && eatHour < 8;
+    // 3. Standard 4:00 PM to 8:00 PM standard EAT (hour 16 to 19, and up to 20:00)
+    const isWesternEvening = eatHour >= 16 && eatHour < 20;
+
+    return {
+      isValid: isEthiopianDaytime || isWesternMorning || isWesternEvening,
+      currentTime: currentEATFormatted
+    };
+  };
+
   const handleWithdraw = async (amount: number, wallet: 'INCOME' | 'PERSONAL', details: any, keepOpen?: boolean) => {
+    // Check Ethiopian time window (between 4 and 8 o'clock)
+    const timeCheck = checkEthiopianTimeLimit();
+    if (!timeCheck.isValid) {
+      WebApp.HapticFeedback.notificationOccurred('error');
+      alert(`Withdrawal requests are only allowed between 4 and 8 o'clock Ethiopian time (10:00 AM - 2:00 PM standard EAT, 4:00 AM - 8:00 AM, or 4:00 PM - 8:00 PM). Current Ethiopian Time: ${timeCheck.currentTime} EAT.`);
+      return;
+    }
+
     if (currentJobLevel === JobLevel.INTERN || currentJobLevel.toUpperCase() === 'INTERN') {
       WebApp.HapticFeedback.notificationOccurred('error');
       alert("you are not allowed to withdrew Please contact the customer service");
@@ -1266,6 +1296,14 @@ export default function App() {
   };
 
   const handleTaskAction = async (title: string, commission: number, taskId?: string) => {
+    // Check Ethiopian time window (between 4 and 8 o'clock)
+    const timeCheck = checkEthiopianTimeLimit();
+    if (!timeCheck.isValid) {
+      WebApp.HapticFeedback.notificationOccurred('error');
+      alert(`Tasks can only be completed between 4 and 8 o'clock Ethiopian time (10:00 AM - 2:00 PM standard EAT, 4:00 AM - 8:00 AM, or 4:00 PM - 8:00 PM). Current Ethiopian Time: ${timeCheck.currentTime} EAT.`);
+      return;
+    }
+
     WebApp.HapticFeedback.notificationOccurred('success');
     showNotification(`${t('mission_claimed_msg')}! +ETB ${commission}`, 'success');
     const nextClaimedToday = tasksClaimedToday + 1;
