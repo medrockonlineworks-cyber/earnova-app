@@ -2261,6 +2261,75 @@ function HomePage({ currentJobLevel, onJoinJob, handleAction, t, signedContracts
   );
 }
 
+function ActiveInvestmentCountdown({ startDate, term }: { startDate: string; term: number }) {
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0, expired: false, percentage: 0 });
+
+  useEffect(() => {
+    const calculateTime = () => {
+      const startMs = startDate ? new Date(startDate).getTime() : Date.now();
+      const endMs = startMs + term * 24 * 60 * 60 * 1000;
+      const totalMs = term * 24 * 60 * 60 * 1000;
+      const remainingMs = endMs - Date.now();
+
+      if (remainingMs <= 0) {
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, expired: true, percentage: 100 });
+        return;
+      }
+
+      const elapsedMs = totalMs - remainingMs;
+      const percentage = Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100));
+
+      const days = Math.floor(remainingMs / (24 * 60 * 60 * 1000));
+      const hours = Math.floor((remainingMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+      const minutes = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+      const seconds = Math.floor((remainingMs % (60 * 1000)) / 1000);
+
+      setTimeLeft({ days, hours, minutes, seconds, expired: false, percentage });
+    };
+
+    calculateTime();
+    const interval = setInterval(calculateTime, 1000);
+    return () => clearInterval(interval);
+  }, [startDate, term]);
+
+  if (timeLeft.expired) {
+    return (
+      <div className="space-y-1.5 pt-2 border-t border-slate-50">
+        <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-wider text-emerald-600">
+          <span className="flex items-center gap-1">
+            <Clock size={12} />
+            Investment Mature
+          </span>
+          <span className="font-mono">100% COMPLETE</span>
+        </div>
+        <div className="w-full h-1.5 bg-emerald-100 rounded-full overflow-hidden">
+          <div className="h-full bg-emerald-500 rounded-full" style={{ width: '100%' }} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5 pt-2 border-t border-slate-50">
+      <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-wider">
+        <span className="flex items-center gap-1 text-slate-400">
+          <Clock size={12} className="text-blue-500 animate-spin [animation-duration:8s]" />
+          Remaining Time
+        </span>
+        <span className="font-mono text-blue-600">
+          {timeLeft.days}d {String(timeLeft.hours).padStart(2, '0')}h {String(timeLeft.minutes).padStart(2, '0')}m {String(timeLeft.seconds).padStart(2, '0')}s
+        </span>
+      </div>
+      <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div 
+          className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-1000" 
+          style={{ width: `${timeLeft.percentage}%` }} 
+        />
+      </div>
+    </div>
+  );
+}
+
 function FundPage({ balance, investments = [], onInvest, handleAction, t }: { balance: { personal: number, income: number, workDeposit: number, recommended?: number, teamTasks?: number }, investments: any[], onInvest: (n: string, m: number, w: 'PERSONAL' | 'INCOME') => void, handleAction: (a: string) => void, t: any }) {
   const [showClosedModal, setShowClosedModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState<any | null>(null);
@@ -2372,7 +2441,7 @@ function FundPage({ balance, investments = [], onInvest, handleAction, t }: { ba
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 border-t border-slate-50 pt-3">
+                  <div className="grid grid-cols-3 gap-2 border-t border-slate-50 pt-3 pb-1">
                     <div>
                       <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Invested</p>
                       <p className="text-xs font-black text-slate-800">ETB {Number(inv.amount).toLocaleString()}</p>
@@ -2386,6 +2455,9 @@ function FundPage({ balance, investments = [], onInvest, handleAction, t }: { ba
                       <p className="text-xs font-black text-emerald-600">+ETB {expectedIncome.toLocaleString()}</p>
                     </div>
                   </div>
+
+                  <ActiveInvestmentCountdown startDate={inv.startDate} term={inv.term} />
+
                   <div className="absolute top-0 right-0 w-12 h-12 bg-blue-50/50 rounded-bl-3xl flex items-center justify-center">
                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" />
                   </div>
