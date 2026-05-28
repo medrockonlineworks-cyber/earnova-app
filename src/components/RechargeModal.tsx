@@ -133,7 +133,7 @@ export function RechargeModal({ onClose, onRecharge, initialAmount, t }: Recharg
 
   const methods = [
     { id: 'TELEBIRR', name: 'Telebirr', color: 'bg-emerald-500', icon: 'TB', account: telebirrAccount, holder: telebirrHolder },
-    { id: 'CBE', name: 'CBE Birr', color: 'bg-purple-600', icon: 'CBE', account: cbeAccount, holder: cbeHolder },
+    { id: 'CBE', name: 'CBE Bank', color: 'bg-purple-600', icon: 'CBE', account: cbeAccount, holder: cbeHolder },
   ];
 
   const currentMethod = methods.find(m => m.id === paymentMethod)!;
