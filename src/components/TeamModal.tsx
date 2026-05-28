@@ -3,7 +3,7 @@ import { X, Users, TrendingUp, UserCircle2, AlertTriangle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import WebApp from '@twa-dev/sdk';
 import { cn } from '../lib/utils';
-import { db, getUserDocId } from '../lib/firebase';
+import { db, getUserDocId, isUserAdmin } from '../lib/firebase';
 
 interface TeamModalProps {
   onClose: () => void;
@@ -234,28 +234,40 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
               <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Constructing Team Network...</p>
             </div>
           ) : quotaError ? (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center space-y-3 shadow-sm my-4">
-              <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 mx-auto">
-                <AlertTriangle size={24} />
+            isUserAdmin() ? (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center space-y-3 shadow-sm my-4">
+                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 mx-auto">
+                  <AlertTriangle size={24} />
+                </div>
+                <h3 className="text-sm font-black text-amber-800 uppercase tracking-tight">Database Read Quota Exceeded</h3>
+                <p className="text-[10px] leading-relaxed text-amber-700 font-medium">
+                  The free tier Firestore daily read quota has been exhausted. To view more team records immediately, please upgrade your Firebase project to Spark with an enabled billing instrument or a Blaze pay-as-you-go plan.
+                </p>
+                <div className="pt-2">
+                  <a 
+                    href="https://console.firebase.google.com/project/wise-shuttle-l8gvj/firestore/databases/ai-studio-1c828831-1caf-4d6d-981e-0e35caa43cc0/data?openUpgradeDialog=true"
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-block bg-amber-600 hover:bg-amber-700 text-white font-black text-[9px] uppercase tracking-wider px-4 py-2.5 rounded-xl transition-all shadow-md active:scale-95"
+                  >
+                    Upgrade Database Quota
+                  </a>
+                </div>
+                <p className="text-[8px] font-bold text-amber-600 uppercase tracking-wider">
+                  Daily limits auto-reset at midnight PST.
+                </p>
               </div>
-              <h3 className="text-sm font-black text-amber-800 uppercase tracking-tight">Database Read Quota Exceeded</h3>
-              <p className="text-[10px] leading-relaxed text-amber-700 font-medium">
-                The free tier Firestore daily read quota has been exhausted. To view more team records immediately, please upgrade your Firebase project to Spark with an enabled billing instrument or a Blaze pay-as-you-go plan.
-              </p>
-              <div className="pt-2">
-                <a 
-                  href="https://console.firebase.google.com/project/wise-shuttle-l8gvj/firestore/databases/ai-studio-1c828831-1caf-4d6d-981e-0e35caa43cc0/data?openUpgradeDialog=true"
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="inline-block bg-amber-600 hover:bg-amber-700 text-white font-black text-[9px] uppercase tracking-wider px-4 py-2.5 rounded-xl transition-all shadow-md active:scale-95"
-                >
-                  Upgrade Database Quota
-                </a>
+            ) : (
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center space-y-3 shadow-sm my-4">
+                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 mx-auto">
+                  <AlertTriangle size={24} />
+                </div>
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">System Under Maintenance</h3>
+                <p className="text-[10px] leading-relaxed text-slate-600 font-semibold font-sans">
+                  The team network system is currently experiencing high volume loads and temporary maintenance. Your structure is perfectly tracked, and normal view access will resume shortly.
+                </p>
               </div>
-              <p className="text-[8px] font-bold text-amber-600 uppercase tracking-wider">
-                Daily limits auto-reset at midnight PST.
-              </p>
-            </div>
+            )
           ) : errorMsg ? (
             <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-center space-y-3 shadow-sm my-4">
               <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center text-rose-600 mx-auto">
