@@ -1304,18 +1304,13 @@ export default function App() {
       return false;
     }
 
-    WebApp.HapticFeedback.notificationOccurred('success');
-    showNotification(`${t('mission_claimed_msg')}! +ETB ${commission}`, 'success');
-    const nextClaimedToday = tasksClaimedToday + 1;
-    setBalance(prev => ({ ...prev, income: prev.income + commission }));
-    setTasksClaimedToday(nextClaimedToday);
-
     const activeUserId = getUserDocId();
     if (activeUserId) {
       try {
-        const { updateDoc, arrayUnion, increment, addDoc, serverTimestamp } = await import('firebase/firestore');
+        const { setDoc, arrayUnion, increment, addDoc, serverTimestamp } = await import('firebase/firestore');
         const userRef = doc(db, 'users', activeUserId);
         
+        const nextClaimedToday = tasksClaimedToday + 1;
         const todayString = new Date().toDateString();
         const updatePayload: any = {
           income: increment(commission),
@@ -1327,7 +1322,8 @@ export default function App() {
           updatePayload.completedTaskIds = arrayUnion(taskId);
         }
         
-        await updateDoc(userRef, updatePayload);
+        // Use setDoc with merge true to handle users with local profiles whose document doesn't exist on Firestore yet
+        await setDoc(userRef, updatePayload, { merge: true });
 
         // Record details in taskHistory collection
         await addDoc(collection(db, 'taskHistory'), {
@@ -1352,6 +1348,13 @@ export default function App() {
             localStorage.setItem(localHistKey, JSON.stringify([...savedHist, taskId]));
           }
         }
+
+        // ONLY update UI states after successful database write
+        WebApp.HapticFeedback.notificationOccurred('success');
+        showNotification(`${t('mission_claimed_msg')}! +ETB ${commission}`, 'success');
+        setBalance(prev => ({ ...prev, income: prev.income + commission }));
+        setTasksClaimedToday(nextClaimedToday);
+
         return true;
       } catch (err) {
         console.error("Error storing task progress to Firestore:", err);
@@ -3234,36 +3237,24 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
     return () => unsubscribe();
   }, []);
 
-  // Self-healing check: automatically clear out ghost-claims from localStorage/state 
-  // if the task was never successfully written/credited in the Firestore database.
+  // One-way sync to ensure completed tasks from database are marked as claimed locally
   useEffect(() => {
-    if (dbCompletedIds.length === 0 && tasksClaimedToday === 0) {
-      if (claimedList.length > 0) {
-        setClaimedList([]);
-        localStorage.setItem(localClaimedKey, JSON.stringify([]));
-      }
-      return;
-    }
-
-    let hasChanges = false;
-    const healed = claimedList.filter(id => {
-      const mission = assignedMissions.find(m => m.id === id);
-      if (mission) {
+    if (dbCompletedIds.length > 0 && assignedMissions.length > 0) {
+      let changed = false;
+      const updated = [...claimedList];
+      assignedMissions.forEach(mission => {
         const taskId = mission.baseTaskId || mission.id;
-        if (taskId && !dbCompletedIds.includes(taskId)) {
-          hasChanges = true;
-          return false; // remove ghost claim
+        if (taskId && dbCompletedIds.includes(taskId) && !updated.includes(mission.id)) {
+          updated.push(mission.id);
+          changed = true;
         }
+      });
+      if (changed) {
+        setClaimedList(updated);
+        localStorage.setItem(localClaimedKey, JSON.stringify(updated));
       }
-      return true;
-    });
-
-    if (hasChanges) {
-      setClaimedList(healed);
-      localStorage.setItem(localClaimedKey, JSON.stringify(healed));
-      console.log("[Self-Healing] Remedied ghost-claimed daily tasks:", claimedList.length - healed.length);
     }
-  }, [dbCompletedIds, assignedMissions, tasksClaimedToday]);
+  }, [dbCompletedIds, assignedMissions]);
 
   // Fetch or set existing allocated tasks from localStorage and clear old fallbacks if present
   useEffect(() => {
