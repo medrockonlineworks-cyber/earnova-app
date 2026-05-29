@@ -108,6 +108,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
   const [adjustAmountStr, setAdjustAmountStr] = useState<string>('');
   const [adminTeamTab, setAdminTeamTab] = useState<'A' | 'B' | 'C'>('A');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [newPasswordInput, setNewPasswordInput] = useState<string>('');
 
   // States for Editable payment methods
   const [telebirrAccount, setTelebirrAccount] = useState('0926193920');
@@ -556,6 +557,39 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
       }
     } catch (error) {
       console.error("Status update error:", error);
+    }
+  };
+
+  const handleUpdateUserPassword = async (userId: string, newPassword: string) => {
+    try {
+      if (!newPassword || newPassword.trim().length < 4) {
+        alert("Please enter a valid password (at least 4 characters)");
+        return;
+      }
+      WebApp.HapticFeedback.impactOccurred('medium');
+      const userRef = doc(db, 'users', userId);
+      await setDoc(userRef, {
+        password: newPassword.trim()
+      }, { merge: true });
+      
+      WebApp.HapticFeedback.notificationOccurred('success');
+      setSuccessToast(`Successfully updated user password to ${newPassword.trim()}!`);
+      setTimeout(() => setSuccessToast(null), 3000);
+      
+      setUsers((prevUsers) => 
+        prevUsers.map(u => u.id === userId ? { ...u, password: newPassword.trim() } : u)
+      );
+
+      if (selectedUserForManagement && selectedUserForManagement.id === userId) {
+        setSelectedUserForManagement((prev: any) => ({
+          ...prev,
+          password: newPassword.trim()
+        }));
+      }
+      setNewPasswordInput('');
+    } catch (err: any) {
+      console.error("Password update error:", err);
+      alert("Failed to update password: " + err.message);
     }
   };
 
@@ -2492,6 +2526,25 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                           ? new Date(selectedUserForManagement.createdAt).toLocaleString() 
                           : 'N/A'}
                       </p>
+                    </div>
+                    <div className="col-span-2 border-t border-white/5 pt-3">
+                      <p className="text-[8px] font-black text-amber-500 uppercase tracking-widest mb-1.5">Change Registered Password</p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="New password (min 4 chars)"
+                          value={newPasswordInput}
+                          onChange={(e) => setNewPasswordInput(e.target.value)}
+                          className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:border-amber-500 focus:outline-none font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateUserPassword(selectedUserForManagement.id, newPasswordInput)}
+                          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-[#0A0F1E] rounded-xl text-[9px] font-black uppercase tracking-wider transition-all active:scale-95 shrink-0"
+                        >
+                          Modify Pass
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>

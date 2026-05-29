@@ -29,7 +29,7 @@ const appConfig = {
 };
 
 const firebaseApp = initializeApp(appConfig);
-const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
 
 interface PayoutResult {
   userId: string;

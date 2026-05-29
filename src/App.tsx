@@ -264,6 +264,28 @@ async function fetchAndAwardTaskCommission(subordinateId: string, subordinateLev
   }
 }
 
+export function checkEthiopianTimeLimit() {
+  const now = new Date();
+  // Ethiopia is in East Africa Time (EAT), which is UTC + 3 hours
+  const utcHour = now.getUTCHours();
+  const utcMin = now.getUTCMinutes();
+  const eatHour = (utcHour + 3) % 24;
+  const currentEATFormatted = `${String(eatHour).padStart(2, '0')}:${String(utcMin).padStart(2, '0')}`;
+
+  // Valid Ethiopian 4 to 8 o'clock windows:
+  // 1. Ethiopian Daytime 4 to 8 o'clock corresponds to 10:00 AM - 2:00 PM standard EAT (hour 10 to 13, and up to 14:00)
+  const isEthiopianDaytime = eatHour >= 10 && eatHour < 14;
+  // 2. Standard 4:00 AM to 8:00 AM standard EAT (hour 4 to 7, and up to 08:00)
+  const isWesternMorning = eatHour >= 4 && eatHour < 8;
+  // 3. Standard 4:00 PM to 8:00 PM standard EAT (hour 16 to 19, and up to 20:00)
+  const isWesternEvening = eatHour >= 16 && eatHour < 20;
+
+  return {
+    isValid: isEthiopianDaytime || isWesternMorning || isWesternEvening,
+    currentTime: currentEATFormatted
+  };
+}
+
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('HOME');
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -937,28 +959,6 @@ export default function App() {
     showNotification(`Action: ${action} processed successfully!`);
   };
 
-  const checkEthiopianTimeLimit = () => {
-    const now = new Date();
-    // Ethiopia is in East Africa Time (EAT), which is UTC + 3 hours
-    const utcHour = now.getUTCHours();
-    const utcMin = now.getUTCMinutes();
-    const eatHour = (utcHour + 3) % 24;
-    const currentEATFormatted = `${String(eatHour).padStart(2, '0')}:${String(utcMin).padStart(2, '0')}`;
-
-    // Valid Ethiopian 4 to 8 o'clock windows:
-    // 1. Ethiopian Daytime 4 to 8 o'clock corresponds to 10:00 AM - 2:00 PM standard EAT (hour 10 to 13, and up to 14:00)
-    const isEthiopianDaytime = eatHour >= 10 && eatHour < 14;
-    // 2. Standard 4:00 AM to 8:00 AM standard EAT (hour 4 to 7, and up to 08:00)
-    const isWesternMorning = eatHour >= 4 && eatHour < 8;
-    // 3. Standard 4:00 PM to 8:00 PM standard EAT (hour 16 to 19, and up to 20:00)
-    const isWesternEvening = eatHour >= 16 && eatHour < 20;
-
-    return {
-      isValid: isEthiopianDaytime || isWesternMorning || isWesternEvening,
-      currentTime: currentEATFormatted
-    };
-  };
-
   const handleWithdraw = async (amount: number, wallet: 'INCOME' | 'PERSONAL', details: any, keepOpen?: boolean) => {
     // Check Ethiopian time window (between 4 and 8 o'clock)
     const timeCheck = checkEthiopianTimeLimit();
@@ -1295,13 +1295,13 @@ export default function App() {
     }
   };
 
-  const handleTaskAction = async (title: string, commission: number, taskId?: string) => {
+  const handleTaskAction = async (title: string, commission: number, taskId?: string): Promise<boolean> => {
     // Check Ethiopian time window (between 4 and 8 o'clock)
     const timeCheck = checkEthiopianTimeLimit();
     if (!timeCheck.isValid) {
       WebApp.HapticFeedback.notificationOccurred('error');
       alert(`Tasks can only be completed between 4 and 8 o'clock Ethiopian time (10:00 AM - 2:00 PM standard EAT, 4:00 AM - 8:00 AM, or 4:00 PM - 8:00 PM). Current Ethiopian Time: ${timeCheck.currentTime} EAT.`);
-      return;
+      return false;
     }
 
     WebApp.HapticFeedback.notificationOccurred('success');
@@ -1352,10 +1352,13 @@ export default function App() {
             localStorage.setItem(localHistKey, JSON.stringify([...savedHist, taskId]));
           }
         }
+        return true;
       } catch (err) {
         console.error("Error storing task progress to Firestore:", err);
+        return false;
       }
     }
+    return true;
   };
 
   const handleNavClick = (page: Page) => {
@@ -3127,7 +3130,7 @@ let globalTasksLastFetchedAt = 0;
 const globalCompletedTaskIdsCache: Record<string, string[]> = {};
 const globalCompletedLastFetchedAt: Record<string, number> = {};
 
-function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, t, currentLang = 'EN', onShowHistory }: { currentLevel: JobLevel, onTaskAction: (t: string, c: number, taskId?: string) => void, tasksClaimedToday: number, currentUser: any, t: any, currentLang?: string, onShowHistory: () => void }) {
+function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, t, currentLang = 'EN', onShowHistory }: { currentLevel: JobLevel, onTaskAction: (t: string, c: number, taskId?: string) => Promise<boolean>, tasksClaimedToday: number, currentUser: any, t: any, currentLang?: string, onShowHistory: () => void }) {
   const job = JOBS.find(j => j.level === currentLevel) || JOBS[0];
   const taskCount = job.dailyTasks;
   const commission = job.eachOrder;
@@ -3230,6 +3233,37 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
 
     return () => unsubscribe();
   }, []);
+
+  // Self-healing check: automatically clear out ghost-claims from localStorage/state 
+  // if the task was never successfully written/credited in the Firestore database.
+  useEffect(() => {
+    if (dbCompletedIds.length === 0 && tasksClaimedToday === 0) {
+      if (claimedList.length > 0) {
+        setClaimedList([]);
+        localStorage.setItem(localClaimedKey, JSON.stringify([]));
+      }
+      return;
+    }
+
+    let hasChanges = false;
+    const healed = claimedList.filter(id => {
+      const mission = assignedMissions.find(m => m.id === id);
+      if (mission) {
+        const taskId = mission.baseTaskId || mission.id;
+        if (taskId && !dbCompletedIds.includes(taskId)) {
+          hasChanges = true;
+          return false; // remove ghost claim
+        }
+      }
+      return true;
+    });
+
+    if (hasChanges) {
+      setClaimedList(healed);
+      localStorage.setItem(localClaimedKey, JSON.stringify(healed));
+      console.log("[Self-Healing] Remedied ghost-claimed daily tasks:", claimedList.length - healed.length);
+    }
+  }, [dbCompletedIds, assignedMissions, tasksClaimedToday]);
 
   // Fetch or set existing allocated tasks from localStorage and clear old fallbacks if present
   useEffect(() => {
@@ -3412,7 +3446,7 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
     }, 600);
   };
 
-  const handleClaimReward = (task: any) => {
+  const handleClaimReward = async (task: any) => {
     if (selectedRating === 0 || !selectedTag) {
       alert("Please choose a rating and select a feedback tag!");
       return;
@@ -3421,14 +3455,28 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
     if (claimedList.includes(task.id)) return;
     if (isLocked) return;
 
-    // Add to claimed lists
+    // Check Ethiopian time limit BEFORE modifying state/localStorage so we don't lock the task
+    const timeCheck = checkEthiopianTimeLimit();
+    if (!timeCheck.isValid) {
+      WebApp.HapticFeedback.notificationOccurred('error');
+      alert(`Tasks can only be completed between 4 and 8 o'clock Ethiopian time (10:00 AM - 2:00 PM standard EAT, 4:00 AM - 8:00 AM, or 4:00 PM - 8:00 PM). Current Ethiopian Time: ${timeCheck.currentTime} EAT.`);
+      return;
+    }
+
+    // Call onTaskAction and await successful database write before recording the claim locally
+    const success = await onTaskAction(task.title, task.commission, task.baseTaskId || task.id);
+    if (!success) {
+      // If DB update failed or returned false, abort locally. The task remains claimable.
+      return;
+    }
+
+    // Add to claimed lists only on success
     const updated = [...claimedList, task.id];
     setClaimedList(updated);
     localStorage.setItem(localClaimedKey, JSON.stringify(updated));
 
     setActiveWatchTask(null);
     setShowCongrats(task.title);
-    onTaskAction(task.title, task.commission, task.baseTaskId || task.id);
 
     // Reset modals
     setSelectedRating(0);
