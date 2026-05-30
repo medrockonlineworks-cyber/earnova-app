@@ -3260,14 +3260,40 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
           }
         });
 
-        // Map base task IDs to specific assigned mission IDs for today's view
-        const matchedMissionIds: string[] = [];
+        // Map completed task IDs to specific assigned mission IDs precisely to avoid false-claiming duplicates
+        const baseTaskCountMap: Record<string, number> = {};
+        claimedToday.forEach(tId => {
+          baseTaskCountMap[tId] = (baseTaskCountMap[tId] || 0) + 1;
+        });
+
+        const matchedSlots = new Set<string>();
+        
+        // Step 1: Match exact slot IDs first
         assignedMissions.forEach(mission => {
-          const taskId = mission.baseTaskId || mission.id;
-          if (taskId && claimedToday.includes(taskId)) {
-            matchedMissionIds.push(mission.id);
+          if (claimedToday.includes(mission.id)) {
+            matchedSlots.add(mission.id);
+            if (baseTaskCountMap[mission.id] > 0) {
+              baseTaskCountMap[mission.id]--;
+            }
+            if (mission.baseTaskId && baseTaskCountMap[mission.baseTaskId] > 0) {
+              baseTaskCountMap[mission.baseTaskId]--;
+            }
           }
         });
+
+        // Step 2: Fallback to match slot by baseTaskId for older claims or non-slot schemas
+        // up to the remaining count to keep 1-to-1 sync.
+        assignedMissions.forEach(mission => {
+          if (!matchedSlots.has(mission.id)) {
+            const baseId = mission.baseTaskId || mission.id;
+            if (baseId && baseTaskCountMap[baseId] > 0) {
+              matchedSlots.add(mission.id);
+              baseTaskCountMap[baseId]--;
+            }
+          }
+        });
+
+        const matchedMissionIds = Array.from(matchedSlots);
 
         if (matchedMissionIds.length > 0) {
           setClaimedList(prev => {
@@ -3499,7 +3525,7 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
     }
 
     // Call onTaskAction and await successful database write before recording the claim locally
-    const success = await onTaskAction(task.title, task.commission, task.baseTaskId || task.id);
+    const success = await onTaskAction(task.title, task.commission, task.id);
     if (!success) {
       // If DB update failed or returned false, abort locally. The task remains claimable.
       return;
