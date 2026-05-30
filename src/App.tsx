@@ -64,7 +64,7 @@ import { LoginPage } from './components/LoginPage';
 import { TRANSLATIONS, Language } from './translations';
 import { auth, db, handleFirestoreError, OperationType, getUserDocId, isUserAdmin, logoutUser } from './lib/firebase';
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { doc, onSnapshot, getDoc, setDoc, collection, query } from 'firebase/firestore';
+import { doc, onSnapshot, getDoc, setDoc, collection, query, where } from 'firebase/firestore';
 
 type Page = 'HOME' | 'FUND' | 'INCOME' | 'TASK' | 'PROFILE';
 
@@ -272,16 +272,9 @@ export function checkEthiopianTimeLimit() {
   const eatHour = (utcHour + 3) % 24;
   const currentEATFormatted = `${String(eatHour).padStart(2, '0')}:${String(utcMin).padStart(2, '0')}`;
 
-  // Valid Ethiopian 4 to 8 o'clock windows:
-  // 1. Ethiopian Daytime 4 to 8 o'clock corresponds to 10:00 AM - 2:00 PM standard EAT (hour 10 to 13, and up to 14:00)
-  const isEthiopianDaytime = eatHour >= 10 && eatHour < 14;
-  // 2. Standard 4:00 AM to 8:00 AM standard EAT (hour 4 to 7, and up to 08:00)
-  const isWesternMorning = eatHour >= 4 && eatHour < 8;
-  // 3. Standard 4:00 PM to 8:00 PM standard EAT (hour 16 to 19, and up to 20:00)
-  const isWesternEvening = eatHour >= 16 && eatHour < 20;
-
+  // Time is unrestricted (24 hours a day for tasks and operations)
   return {
-    isValid: isEthiopianDaytime || isWesternMorning || isWesternEvening,
+    isValid: true,
     currentTime: currentEATFormatted
   };
 }
@@ -1328,6 +1321,7 @@ export default function App() {
         // Record details in taskHistory collection
         await addDoc(collection(db, 'taskHistory'), {
           userId: activeUserId,
+          taskId: taskId || null,
           taskTitle: title,
           commission: commission,
           timestamp: serverTimestamp()
@@ -3237,24 +3231,74 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
     return () => unsubscribe();
   }, []);
 
-  // One-way sync to ensure completed tasks from database are marked as claimed locally
+  // Load today's completed task IDs from taskHistory to ensure accurate real-time local sync representing today only
   useEffect(() => {
-    if (dbCompletedIds.length > 0 && assignedMissions.length > 0) {
-      let changed = false;
-      const updated = [...claimedList];
-      assignedMissions.forEach(mission => {
-        const taskId = mission.baseTaskId || mission.id;
-        if (taskId && dbCompletedIds.includes(taskId) && !updated.includes(mission.id)) {
-          updated.push(mission.id);
-          changed = true;
+    const activeUserId = getUserDocId();
+    if (!activeUserId || assignedMissions.length === 0) return;
+
+    let unsubscribe = () => {};
+    try {
+      const q = query(
+        collection(db, 'taskHistory'),
+        where('userId', '==', activeUserId)
+      );
+
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        const todayStr = new Date().toDateString();
+        const claimedToday: string[] = [];
+        
+        snapshot.docs.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data.timestamp) {
+            const dateObj = data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
+            if (dateObj.toDateString() === todayStr) {
+              const tId = data.taskId;
+              if (tId) {
+                claimedToday.push(tId);
+              }
+            }
+          }
+        });
+
+        // Map base task IDs to specific assigned mission IDs for today's view
+        const matchedMissionIds: string[] = [];
+        assignedMissions.forEach(mission => {
+          const taskId = mission.baseTaskId || mission.id;
+          if (taskId && claimedToday.includes(taskId)) {
+            matchedMissionIds.push(mission.id);
+          }
+        });
+
+        if (matchedMissionIds.length > 0) {
+          setClaimedList(prev => {
+            const next = Array.from(new Set([...prev, ...matchedMissionIds]));
+            if (JSON.stringify(next) !== JSON.stringify(prev)) {
+              localStorage.setItem(localClaimedKey, JSON.stringify(next));
+              return next;
+            }
+            return prev;
+          });
+        } else {
+          // If Firestore has 0 completed today, synchronise it with empty local claimedList if tasksClaimedToday is 0
+          if (tasksClaimedToday === 0) {
+            setClaimedList(prev => {
+              if (prev.length > 0) {
+                localStorage.setItem(localClaimedKey, JSON.stringify([]));
+                return [];
+              }
+              return prev;
+            });
+          }
         }
+      }, (err) => {
+        console.warn("Realtime taskHistory sync listener failed:", err);
       });
-      if (changed) {
-        setClaimedList(updated);
-        localStorage.setItem(localClaimedKey, JSON.stringify(updated));
-      }
+    } catch (e) {
+      console.error("Failed to setup realtime taskHistory selector:", e);
     }
-  }, [dbCompletedIds, assignedMissions]);
+
+    return () => unsubscribe();
+  }, [assignedMissions, tasksClaimedToday]);
 
   // Fetch or set existing allocated tasks from localStorage and clear old fallbacks if present
   useEffect(() => {
@@ -3275,7 +3319,7 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
             t.title.includes('Rate Media Commercial')
           ))
         );
-        if (hasFallbacks) {
+        if (hasFallbacks || parsed.length !== taskCount) {
           localStorage.removeItem(assignContentKey);
           localStorage.removeItem(assignStatusKey);
           setAssignedMissions([]);
@@ -3286,7 +3330,7 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
         setAssignedMissions([]);
       }
     }
-  }, [assignContentKey, assignStatusKey]);
+  }, [assignContentKey, assignStatusKey, taskCount]);
 
   // Sync timers
   useEffect(() => {
