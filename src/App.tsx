@@ -289,12 +289,28 @@ export default function App() {
   const [userProfile, setUserProfile] = useState<{ phoneNumber?: string; fullName?: string; email?: string; avatarUrl?: string; avatarSeed?: string; createdAt?: string } | null>(null);
   const [showSupportOnSuspended, setShowSupportOnSuspended] = useState(false);
   const [signedContracts, setSignedContracts] = useState<string[]>(() => {
-    const saved = localStorage.getItem('earnova_signed_contracts');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('earnova_signed_contracts');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.warn("Invalid signed contracts JSON ignored:", e);
+    }
+    return [];
   });
   const [investments, setInvestments] = useState<any[]>(() => {
-    const saved = localStorage.getItem('user_investments');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('user_investments');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.warn("Invalid investments JSON ignored:", e);
+    }
+    return [];
   });
   
   // Custom states for high-fidelity downloadable (PWA) installation
@@ -859,7 +875,16 @@ export default function App() {
     }
   }, [activePage, showWithdrawModal, showRechargeModal, showSupportModal]);
 
-  const t = (key: keyof typeof TRANSLATIONS['EN']) => TRANSLATIONS[currentLang][key] || TRANSLATIONS['EN'][key] || key;
+  const t = (key: keyof typeof TRANSLATIONS['EN']) => {
+    try {
+      const lang = currentLang || 'EN';
+      const dict = TRANSLATIONS[lang] || TRANSLATIONS['EN'];
+      return dict[key] || TRANSLATIONS['EN'][key] || key;
+    } catch (e) {
+      console.warn("Translation failed for key:", key, e);
+      return TRANSLATIONS['EN'][key] || key;
+    }
+  };
 
   const showNotification = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     setNotification({ message, type });
@@ -3180,8 +3205,16 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
   const localClaimedKey = `earnova_claimed_tasks_${userId}_${getTodayKey()}`;
 
   const [claimedList, setClaimedList] = useState<string[]>(() => {
-    const saved = localStorage.getItem(localClaimedKey);
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem(localClaimedKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.warn("Invalid claimedList JSON ignored:", e);
+    }
+    return [];
   });
 
   // Load database tasks from Firestore tasks collection (real-time snapshot listener)
@@ -3211,7 +3244,7 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
     const unsubscribe = onSnapshot(userRef, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (data && data.completedTaskIds) {
+        if (data && data.completedTaskIds && Array.isArray(data.completedTaskIds)) {
           setDbCompletedIds(data.completedTaskIds);
           globalCompletedTaskIdsCache[activeUserId] = data.completedTaskIds;
           globalCompletedLastFetchedAt[activeUserId] = Date.now();
@@ -3223,7 +3256,10 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
       try {
         const savedClaims = localStorage.getItem(`earnova_historical_claimed_${activeUserId}`);
         if (savedClaims) {
-          setDbCompletedIds(JSON.parse(savedClaims));
+          const parsed = JSON.parse(savedClaims);
+          if (Array.isArray(parsed)) {
+            setDbCompletedIds(parsed);
+          }
         }
       } catch (e) {}
     });
@@ -3332,25 +3368,33 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
     if (savedContent) {
       try {
         const parsed = JSON.parse(savedContent);
-        const hasFallbacks = parsed.some((t: any) => 
-          !t.dbSource || 
-          (t.id && String(t.id).includes('fallback')) || 
-          (t.title && (
-            t.title.includes('Review E-Wallet Tech') || 
-            t.title.includes('Watch Commercial Spot') || 
-            t.title.includes('Verify User Flow') || 
-            t.title.includes('Evaluate Video Spot') || 
-            t.title.includes('Review Video Content') || 
-            t.title.includes('Watch Ad Promotion') || 
-            t.title.includes('Rate Media Commercial')
-          ))
-        );
-        if (hasFallbacks || parsed.length !== taskCount) {
+        if (Array.isArray(parsed)) {
+          const hasFallbacks = parsed.some((t: any) => 
+            t && (
+              !t.dbSource || 
+              (t.id && String(t.id).includes('fallback')) || 
+              (t.title && (
+                t.title.includes('Review E-Wallet Tech') || 
+                t.title.includes('Watch Commercial Spot') || 
+                t.title.includes('Verify User Flow') || 
+                t.title.includes('Evaluate Video Spot') || 
+                t.title.includes('Review Video Content') || 
+                t.title.includes('Watch Ad Promotion') || 
+                t.title.includes('Rate Media Commercial')
+              ))
+            )
+          );
+          if (hasFallbacks || parsed.length !== taskCount) {
+            localStorage.removeItem(assignContentKey);
+            localStorage.removeItem(assignStatusKey);
+            setAssignedMissions([]);
+          } else {
+            setAssignedMissions(parsed);
+          }
+        } else {
           localStorage.removeItem(assignContentKey);
           localStorage.removeItem(assignStatusKey);
           setAssignedMissions([]);
-        } else {
-          setAssignedMissions(parsed);
         }
       } catch (e) {
         setAssignedMissions([]);
@@ -3861,7 +3905,7 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
 
       {/* Task Streams List */}
       <div className="grid grid-cols-1 gap-3.5">
-        {assignedMissions.map((m) => ({ ...m, commission: commission })).map((mission, idx) => {
+        {assignedMissions.filter(m => m && typeof m === 'object').map((m) => ({ ...m, commission: commission })).map((mission, idx) => {
           const isClaimed = claimedList.includes(mission.id);
           return (
             <div key={`assigned-mission-row-${mission.id}`} className={cn(
