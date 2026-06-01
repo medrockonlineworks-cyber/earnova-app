@@ -1670,6 +1670,7 @@ export default function App() {
               onClose={() => setShowInviteModal(false)}
               t={t}
               userPhone={currentUser?.uid}
+              currentLang={currentLang}
             />
           </motion.div>
         )}

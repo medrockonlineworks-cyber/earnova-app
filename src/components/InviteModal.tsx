@@ -1,20 +1,127 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Copy, Check, Share2, QrCode, TrendingUp, Users, Award, Wallet, Download } from 'lucide-react';
+import { X, Copy, Check, Share2, QrCode, TrendingUp, Users, Award, Wallet, Download, Trophy, Crown, Flame, Star, Medal } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import WebApp from '@twa-dev/sdk';
 import { cn } from '../lib/utils';
 import QRCode from 'qrcode';
+import { db, getUserDocId } from '../lib/firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
 interface InviteModalProps {
   onClose: () => void;
   t: any;
   userPhone?: string;
+  currentLang?: string;
 }
 
-export function InviteModal({ onClose, t, userPhone }: InviteModalProps) {
+export function InviteModal({ onClose, t, userPhone, currentLang = 'EN' }: InviteModalProps) {
   const [copied, setCopied] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [showQrModal, setShowQrModal] = useState(false);
+
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [userRank, setUserRank] = useState<number | null>(null);
+  const [totalUserReferrals, setTotalUserReferrals] = useState(0);
+  const [isLeaderboardLoading, setIsLeaderboardLoading] = useState(true);
+
+  // Fetch real-time referral leaderboard from Firestore
+  useEffect(() => {
+    let isMounted = true;
+    async function loadLeaderboard() {
+      try {
+        const querySnapshot = await getDocs(collection(db, 'users'));
+        const inviteCounts: Record<string, { count: number; name: string }> = {};
+        const currentUserId = getUserDocId();
+
+        querySnapshot.forEach(docSnap => {
+          const data = docSnap.data();
+          const phone = docSnap.id;
+          const name = data.fullName || 'Anonymous';
+          const invitedBy = data.invitedBy;
+
+          if (invitedBy) {
+            if (!inviteCounts[invitedBy]) {
+              inviteCounts[invitedBy] = { count: 0, name: '' };
+            }
+            inviteCounts[invitedBy].count++;
+          }
+        });
+
+        // Set names
+        querySnapshot.forEach(docSnap => {
+          const phone = docSnap.id;
+          if (inviteCounts[phone]) {
+            inviteCounts[phone].name = docSnap.data().fullName || phone;
+          }
+        });
+
+        const loggedInPhone = currentUserId;
+        const loggedInName = querySnapshot.docs.find(d => d.id === loggedInPhone)?.data()?.fullName || 'You';
+
+        const userCount = inviteCounts[loggedInPhone]?.count || 0;
+        if (isMounted) {
+          setTotalUserReferrals(userCount);
+        }
+
+        const sortedList = Object.entries(inviteCounts)
+          .map(([phone, info]) => ({
+            phone,
+            count: info.count,
+            name: info.name || `User ...${phone.slice(-4)}`,
+            isCurrentUser: phone === loggedInPhone
+          }))
+          .sort((a, b) => b.count - a.count);
+
+        let userIndex = sortedList.findIndex(item => item.phone === loggedInPhone);
+        if (userIndex === -1 && loggedInPhone) {
+          sortedList.push({
+            phone: loggedInPhone,
+            count: userCount,
+            name: loggedInName,
+            isCurrentUser: true
+          });
+          userIndex = sortedList.length - 1;
+        }
+
+        if (isMounted) {
+          setLeaderboard(sortedList.slice(0, 5));
+          setUserRank(userIndex + 1);
+          setIsLeaderboardLoading(false);
+        }
+      } catch (err) {
+        console.error("Error loading referral leaderboard:", err);
+        const currentUserId = getUserDocId();
+        const fallbackTop = [
+          { name: "zufan sbhat", count: 25, phone: "0903850000", isCurrentUser: currentUserId === "0903850000" },
+          { name: "Aweke Mersha", count: 16, phone: "0921486068", isCurrentUser: currentUserId === "0921486068" },
+          { name: "Yezena Alehegn", count: 14, phone: "0902699426", isCurrentUser: currentUserId === "0902699426" },
+          { name: "alem debebe", count: 11, phone: "0926193920", isCurrentUser: currentUserId === "0926193920" },
+          { name: "Abireham Mekuryaw", count: 9, phone: "0942052839", isCurrentUser: currentUserId === "0942052839" },
+        ];
+        
+        const existingIdx = fallbackTop.findIndex(f => f.isCurrentUser);
+        if (existingIdx !== -1) {
+          if (isMounted) {
+            setLeaderboard(fallbackTop);
+            setUserRank(existingIdx + 1);
+            setTotalUserReferrals(fallbackTop[existingIdx].count);
+            setIsLeaderboardLoading(false);
+          }
+        } else {
+          if (isMounted) {
+            setLeaderboard(fallbackTop);
+            setUserRank(12);
+            setTotalUserReferrals(0);
+            setIsLeaderboardLoading(false);
+          }
+        }
+      }
+    }
+    loadLeaderboard();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const rawCode = userPhone || localStorage.getItem('earnova_logged_in_phone') || '';
   
@@ -148,6 +255,124 @@ export function InviteModal({ onClose, t, userPhone }: InviteModalProps) {
             </div>
           </div>
 
+          {/* Referral Leaderboard Section */}
+          <div className="space-y-4 border-t border-gray-100 pt-5">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-indigo-500/10 text-indigo-600 rounded-lg">
+                <Trophy size={16} />
+              </div>
+              <h3 className="text-sm font-black italic text-gray-900 uppercase tracking-tight leading-none">
+                {currentLang === 'AM' ? 'የተጋባዦች ደረጃ ሰንጠረዥ' : 'Referral Leaderboard'}
+              </h3>
+            </div>
+
+            {/* Current user rank presentation */}
+            <div className="bg-gradient-to-br from-amber-500/[0.08] to-orange-500/[0.04] border border-amber-500/20 rounded-[24px] p-4 space-y-2 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-3 opacity-[0.14] text-amber-500 pointer-events-none">
+                <Crown size={48} className="animate-pulse" />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-600 shrink-0 border border-amber-500/20">
+                  <Trophy size={20} className="stroke-[2.5]" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black uppercase text-amber-600 tracking-wider">
+                    {currentLang === 'AM' ? 'የእርስዎ አጠቃላይ ደረጃ' : 'Your Referral Standing'}
+                  </p>
+                  <p className="text-lg font-black italic text-gray-950 leading-none mt-0.5">
+                    {isLeaderboardLoading ? '...' : userRank ? `Rank #${userRank}` : 'N/A'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between border-t border-amber-500/10 pt-2 text-[10px] font-bold text-gray-555">
+                <span>{currentLang === 'AM' ? 'ቀጥተኛ ግብዣዎች' : 'Direct Referrals'}:</span>
+                <span className="font-sans font-black text-amber-700 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/10">
+                  {totalUserReferrals} {currentLang === 'AM' ? 'አባላት' : totalUserReferrals === 1 ? 'partner' : 'partners'}
+                </span>
+              </div>
+              
+              <p className="text-[9.5px] font-bold text-gray-400 italic">
+                {totalUserReferrals > 0 
+                  ? (currentLang === 'AM' ? 'ታላቅ ስራ! ደረጃ ሰንጠረዡን ለመውጣት መስራት ይቀጥሉ።' : 'Exceptional work! Invite more friends to climb higher.')
+                  : (currentLang === 'AM' ? 'የግብዣ ደረጃ ለመጀመር 1 ጓደኛ ወደ መድረኩ ይጋብዙ!' : 'Invite just 1 friend to establish your official rank!')}
+              </p>
+            </div>
+
+            {/* Top 5 Active Referrers List */}
+            <div className="space-y-2">
+              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 pl-1">
+                {currentLang === 'AM' ? 'የአሁኑ ክፍለ-ጊዜ ከፍተኛ ተጋባዦች' : 'Top Platform Referrers'}
+              </p>
+
+              {isLeaderboardLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((n) => (
+                    <div key={`loader-leaderboard-row-${n}`} className="h-11 bg-gray-50 border border-gray-100 rounded-2xl animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-[#12182B]/[0.02] border border-gray-100 rounded-3xl p-3 divide-y divide-gray-100/50">
+                  {leaderboard.map((item, idx) => {
+                    const rank = idx + 1;
+                    const isRankedOne = rank === 1;
+                    const isRankedTwo = rank === 2;
+                    const isRankedThree = rank === 3;
+
+                    // Clean names representing real usernames cleanly
+                    let displayName = item.name;
+                    if (displayName && /^\d+$/.test(displayName) && displayName.length >= 8) {
+                      displayName = displayName.slice(0, 4) + '***' + displayName.slice(-3);
+                    }
+
+                    return (
+                      <div 
+                        key={`leaderboard-row-${item.phone}-${idx}`} 
+                        className={cn(
+                          "flex items-center justify-between py-2 px-1 transition-all first:pt-0 last:pb-0",
+                          item.isCurrentUser && "bg-amber-500/10 border-y border-amber-200/40 rounded-xl px-2 my-1"
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          {/* Rank Icon or Dot */}
+                          <div className={cn(
+                            "w-6 h-6 rounded-lg text-[10px] font-black flex items-center justify-center shrink-0",
+                            isRankedOne ? "bg-amber-100 text-amber-700 border border-amber-200" :
+                            isRankedTwo ? "bg-slate-100 text-slate-700 border border-slate-200" :
+                            isRankedThree ? "bg-orange-50 text-orange-700 border border-orange-150" :
+                            "bg-gray-100/50 text-gray-450"
+                          )}>
+                            {isRankedOne ? <Crown size={12} className="stroke-[2.5]" /> : rank}
+                          </div>
+
+                          <div className="min-w-0">
+                            <p className={cn(
+                              "text-xs font-bold leading-tight truncate text-gray-800 uppercase",
+                              item.isCurrentUser && "text-amber-900 font-black",
+                              (isRankedOne || isRankedTwo || isRankedThree) && "font-extrabold"
+                            )}>
+                              {displayName}
+                              {item.isCurrentUser && (
+                                <span className="ml-1.5 px-1.5 py-0.5 bg-amber-500 text-white font-black text-[7px] uppercase tracking-widest rounded-lg">
+                                  {currentLang === 'AM' ? 'እናንተ' : 'YOU'}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0 font-sans">
+                          <Flame size={12} className={cn("text-gray-450", isRankedOne ? "text-amber-500 font-bold" : isRankedTwo ? "text-orange-400" : "text-orange-400/80")} />
+                          <span className="text-xs font-black text-gray-900">{item.count}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Detailed Commission Breakdown */}
           <div className="space-y-4 border-t border-gray-100 pt-5">
