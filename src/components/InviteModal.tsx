@@ -4,8 +4,23 @@ import React, { useState, useEffect } from 'react';
 import WebApp from '@twa-dev/sdk';
 import { cn } from '../lib/utils';
 import QRCode from 'qrcode';
-import { db, getUserDocId } from '../lib/firebase';
+import { db, getUserDocId, isUserAdmin } from '../lib/firebase';
 import { collection, getDocs } from 'firebase/firestore';
+
+function normalizePhone(ph: string): string {
+  if (!ph) return '';
+  let clean = ph.trim().replace(/\s+/g, '');
+  if (/^\+?251[79]\d{8}$/.test(clean)) {
+    return clean.slice(-9);
+  }
+  if (/^0[79]\d{8}$/.test(clean)) {
+    return clean.slice(1);
+  }
+  if (/^[79]\d{8}$/.test(clean)) {
+    return clean;
+  }
+  return clean.replace(/\D/g, '');
+}
 
 interface InviteModalProps {
   onClose: () => void;
@@ -32,6 +47,7 @@ export function InviteModal({ onClose, t, userPhone, currentLang = 'EN' }: Invit
         const querySnapshot = await getDocs(collection(db, 'users'));
         const inviteCounts: Record<string, { count: number; name: string }> = {};
         const currentUserId = getUserDocId();
+        const normLoggedInPhone = normalizePhone(currentUserId);
 
         querySnapshot.forEach(docSnap => {
           const data = docSnap.data();
@@ -40,25 +56,28 @@ export function InviteModal({ onClose, t, userPhone, currentLang = 'EN' }: Invit
           const invitedBy = data.invitedBy;
 
           if (invitedBy) {
-            if (!inviteCounts[invitedBy]) {
-              inviteCounts[invitedBy] = { count: 0, name: '' };
+            const normInvitedBy = normalizePhone(invitedBy);
+            if (normInvitedBy) {
+              if (!inviteCounts[normInvitedBy]) {
+                inviteCounts[normInvitedBy] = { count: 0, name: '' };
+              }
+              inviteCounts[normInvitedBy].count++;
             }
-            inviteCounts[invitedBy].count++;
           }
         });
 
         // Set names
         querySnapshot.forEach(docSnap => {
           const phone = docSnap.id;
-          if (inviteCounts[phone]) {
-            inviteCounts[phone].name = docSnap.data().fullName || phone;
+          const normPhone = normalizePhone(phone);
+          if (normPhone && inviteCounts[normPhone]) {
+            inviteCounts[normPhone].name = docSnap.data().fullName || phone;
           }
         });
 
-        const loggedInPhone = currentUserId;
-        const loggedInName = querySnapshot.docs.find(d => d.id === loggedInPhone)?.data()?.fullName || 'You';
+        const loggedInName = querySnapshot.docs.find(d => normalizePhone(d.id) === normLoggedInPhone)?.data()?.fullName || 'You';
 
-        const userCount = inviteCounts[loggedInPhone]?.count || 0;
+        const userCount = inviteCounts[normLoggedInPhone]?.count || 0;
         if (isMounted) {
           setTotalUserReferrals(userCount);
         }
@@ -68,14 +87,14 @@ export function InviteModal({ onClose, t, userPhone, currentLang = 'EN' }: Invit
             phone,
             count: info.count,
             name: info.name || `User ...${phone.slice(-4)}`,
-            isCurrentUser: phone === loggedInPhone
+            isCurrentUser: phone === normLoggedInPhone
           }))
           .sort((a, b) => b.count - a.count);
 
-        let userIndex = sortedList.findIndex(item => item.phone === loggedInPhone);
-        if (userIndex === -1 && loggedInPhone) {
+        let userIndex = sortedList.findIndex(item => item.phone === normLoggedInPhone);
+        if (userIndex === -1 && normLoggedInPhone) {
           sortedList.push({
-            phone: loggedInPhone,
+            phone: normLoggedInPhone,
             count: userCount,
             name: loggedInName,
             isCurrentUser: true
@@ -91,12 +110,13 @@ export function InviteModal({ onClose, t, userPhone, currentLang = 'EN' }: Invit
       } catch (err) {
         console.error("Error loading referral leaderboard:", err);
         const currentUserId = getUserDocId();
+        const normLoggedInPhone = normalizePhone(currentUserId);
         const fallbackTop = [
-          { name: "zufan sbhat", count: 25, phone: "0903850000", isCurrentUser: currentUserId === "0903850000" },
-          { name: "Aweke Mersha", count: 16, phone: "0921486068", isCurrentUser: currentUserId === "0921486068" },
-          { name: "Yezena Alehegn", count: 14, phone: "0902699426", isCurrentUser: currentUserId === "0902699426" },
-          { name: "alem debebe", count: 11, phone: "0926193920", isCurrentUser: currentUserId === "0926193920" },
-          { name: "Abireham Mekuryaw", count: 9, phone: "0942052839", isCurrentUser: currentUserId === "0942052839" },
+          { name: "zufan sbhat", count: 25, phone: "903850000", isCurrentUser: normLoggedInPhone === "903850000" },
+          { name: "Aweke Mersha", count: 16, phone: "921486068", isCurrentUser: normLoggedInPhone === "921486068" },
+          { name: "Yezena Alehegn", count: 14, phone: "902699426", isCurrentUser: normLoggedInPhone === "902699426" },
+          { name: "alem debebe", count: 11, phone: "926193920", isCurrentUser: normLoggedInPhone === "926193920" },
+          { name: "Abireham Mekuryaw", count: 9, phone: "942052839", isCurrentUser: normLoggedInPhone === "942052839" },
         ];
         
         const existingIdx = fallbackTop.findIndex(f => f.isCurrentUser);

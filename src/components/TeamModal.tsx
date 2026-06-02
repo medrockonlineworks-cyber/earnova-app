@@ -41,9 +41,13 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
         }
 
         // Level 1: Fetch users invited by the current user (high limit for full history)
+        const phoneWithZero = currentPhone.startsWith('0') ? currentPhone : '0' + currentPhone;
+        const phoneWithoutZero = currentPhone.startsWith('0') ? currentPhone.slice(1) : currentPhone;
+        const inviterKeys = [phoneWithZero, phoneWithoutZero];
+
         const q1 = query(
           collection(db, 'users'), 
-          where('invitedBy', '==', currentPhone),
+          where('invitedBy', 'in', inviterKeys),
           limit(1000)
         );
         const q1Snap = await getDocs(q1);
@@ -55,7 +59,18 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
           }
         });
 
-        const level1Ids = level1Users.map(u => u.phoneNumber || u.id).filter(Boolean);
+        // Map and extract both formats with and without zero for sub-level lookups
+        const getFormatVariations = (ids: string[]) => {
+          const resultIds = ids.flatMap(ph => {
+            if (!ph) return [];
+            const withZ = ph.startsWith('0') ? ph : '0' + ph;
+            const withoutZ = ph.startsWith('0') ? ph.slice(1) : ph;
+            return [withZ, withoutZ];
+          });
+          return Array.from(new Set(resultIds));
+        };
+
+        const level1Ids = getFormatVariations(level1Users.map(u => u.phoneNumber || u.id).filter(Boolean));
 
         // Helper to query users in chunks of 30 due to Firestore "in" limits
         const fetchInChunks = async (ids: string[]) => {
@@ -91,7 +106,7 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
           level2Users = await fetchInChunks(level1Ids);
         }
 
-        const level2Ids = level2Users.map(u => u.phoneNumber || u.id).filter(Boolean);
+        const level2Ids = getFormatVariations(level2Users.map(u => u.phoneNumber || u.id).filter(Boolean));
 
         // Level 3: Fetch users invited by Level 2 users (load all history)
         let level3Users: any[] = [];

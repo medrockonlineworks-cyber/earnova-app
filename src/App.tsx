@@ -89,24 +89,46 @@ const getUpgradeCommission = (subLevel: string, invLevel: string, depth: number)
   return 0;
 };
 
+// Resilient helper to retrieve user document checking both phone prefix forms
+async function getResilientUser(userId: string) {
+  try {
+    const { doc, getDoc } = await import('firebase/firestore');
+    let ref = doc(db, 'users', userId);
+    let snap = await getDoc(ref);
+    if (snap.exists()) {
+      return { ref, snap, data: snap.data() };
+    }
+    
+    // Try alternative phone format (with or without leading zero)
+    const alternativeId = userId.startsWith('0') ? userId.slice(1) : '0' + userId;
+    ref = doc(db, 'users', alternativeId);
+    snap = await getDoc(ref);
+    if (snap.exists()) {
+      return { ref, snap, data: snap.data() };
+    }
+  } catch (err) {
+    console.warn("getResilientUser lookup failed:", err);
+  }
+  return null;
+}
+
 // Helper to award upgrade commission recursively up to 3 levels (A, B, C)
 async function fetchAndAwardUpgradeCommission(subordinateId: string, upgradeLevel: string) {
   try {
-    const { doc, getDoc, updateDoc, increment, addDoc, collection, serverTimestamp } = await import('firebase/firestore');
+    const { updateDoc, increment, addDoc, collection, serverTimestamp } = await import('firebase/firestore');
     
     // Level 1 Inviter (A)
-    const subRef = doc(db, 'users', subordinateId);
-    const subSnap = await getDoc(subRef);
-    if (!subSnap.exists()) return;
-    const subData = subSnap.data();
+    const subRes = await getResilientUser(subordinateId);
+    if (!subRes) return;
+    const subData = subRes.data;
     const inviterA_Id = (subData?.invitedBy || '').trim();
     if (!inviterA_Id) return;
 
     // Load A
-    const aRef = doc(db, 'users', inviterA_Id);
-    const aSnap = await getDoc(aRef);
-    if (!aSnap.exists()) return;
-    const aData = aSnap.data();
+    const aRes = await getResilientUser(inviterA_Id);
+    if (!aRes) return;
+    const aRef = aRes.ref;
+    const aData = aRes.data;
     const aLevel = aData?.currentLevel || 'Intern';
     const commA = getUpgradeCommission(upgradeLevel, aLevel, 1);
     if (commA > 0) {
@@ -115,7 +137,7 @@ async function fetchAndAwardUpgradeCommission(subordinateId: string, upgradeLeve
         recommended: increment(commA)
       });
       await addDoc(collection(db, 'commissions'), {
-        userId: inviterA_Id,
+        userId: aRef.id,
         amount: commA,
         type: 'team_upgrade',
         label: `Subordinate Level Upgrade Commission`,
@@ -127,10 +149,10 @@ async function fetchAndAwardUpgradeCommission(subordinateId: string, upgradeLeve
     // Level 2 Inviter (B)
     const inviterB_Id = (aData?.invitedBy || '').trim();
     if (!inviterB_Id) return;
-    const bRef = doc(db, 'users', inviterB_Id);
-    const bSnap = await getDoc(bRef);
-    if (!bSnap.exists()) return;
-    const bData = bSnap.data();
+    const bRes = await getResilientUser(inviterB_Id);
+    if (!bRes) return;
+    const bRef = bRes.ref;
+    const bData = bRes.data;
     const bLevel = bData?.currentLevel || 'Intern';
     const commB = getUpgradeCommission(upgradeLevel, bLevel, 2);
     if (commB > 0) {
@@ -139,7 +161,7 @@ async function fetchAndAwardUpgradeCommission(subordinateId: string, upgradeLeve
         recommended: increment(commB)
       });
       await addDoc(collection(db, 'commissions'), {
-        userId: inviterB_Id,
+        userId: bRef.id,
         amount: commB,
         type: 'team_upgrade',
         label: `Indirect Subordinate Level Upgrade Commission`,
@@ -151,10 +173,10 @@ async function fetchAndAwardUpgradeCommission(subordinateId: string, upgradeLeve
     // Level 3 Inviter (C)
     const inviterC_Id = (bData?.invitedBy || '').trim();
     if (!inviterC_Id) return;
-    const cRef = doc(db, 'users', inviterC_Id);
-    const cSnap = await getDoc(cRef);
-    if (!cSnap.exists()) return;
-    const cData = cSnap.data();
+    const cRes = await getResilientUser(inviterC_Id);
+    if (!cRes) return;
+    const cRef = cRes.ref;
+    const cData = cRes.data;
     const cLevel = cData?.currentLevel || 'Intern';
     const commC = getUpgradeCommission(upgradeLevel, cLevel, 3);
     if (commC > 0) {
@@ -163,7 +185,7 @@ async function fetchAndAwardUpgradeCommission(subordinateId: string, upgradeLeve
         recommended: increment(commC)
       });
       await addDoc(collection(db, 'commissions'), {
-        userId: inviterC_Id,
+        userId: cRef.id,
         amount: commC,
         type: 'team_upgrade',
         label: `Indirect Subordinate Level Upgrade Commission`,
@@ -179,21 +201,20 @@ async function fetchAndAwardUpgradeCommission(subordinateId: string, upgradeLeve
 // Helper to award daily task commission recursively up to 3 levels (A, B, C)
 async function fetchAndAwardTaskCommission(subordinateId: string, subordinateLevel: string, taskSingleCommission: number) {
   try {
-    const { doc, getDoc, updateDoc, increment, addDoc, collection, serverTimestamp } = await import('firebase/firestore');
+    const { updateDoc, increment, addDoc, collection, serverTimestamp } = await import('firebase/firestore');
     
     // Level 1 Inviter (A)
-    const subRef = doc(db, 'users', subordinateId);
-    const subSnap = await getDoc(subRef);
-    if (!subSnap.exists()) return;
-    const subData = subSnap.data();
+    const subRes = await getResilientUser(subordinateId);
+    if (!subRes) return;
+    const subData = subRes.data;
     const inviterA_Id = (subData?.invitedBy || '').trim();
     if (!inviterA_Id) return;
 
     // Load A
-    const aRef = doc(db, 'users', inviterA_Id);
-    const aSnap = await getDoc(aRef);
-    if (!aSnap.exists()) return;
-    const aData = aSnap.data();
+    const aRes = await getResilientUser(inviterA_Id);
+    if (!aRes) return;
+    const aRef = aRes.ref;
+    const aData = aRes.data;
     const aLevel = aData?.currentLevel || 'Intern';
     // Must be at same or higher level than subordinate to earn task commission
     if (jobLevelToNum(aLevel) >= jobLevelToNum(subordinateLevel)) {
@@ -203,7 +224,7 @@ async function fetchAndAwardTaskCommission(subordinateId: string, subordinateLev
         teamTasks: increment(commA)
       });
       await addDoc(collection(db, 'commissions'), {
-        userId: inviterA_Id,
+        userId: aRef.id,
         amount: commA,
         type: 'team_task',
         label: `Subordinate Task Commission`,
@@ -215,10 +236,10 @@ async function fetchAndAwardTaskCommission(subordinateId: string, subordinateLev
     // Level 2 Inviter (B)
     const inviterB_Id = (aData?.invitedBy || '').trim();
     if (!inviterB_Id) return;
-    const bRef = doc(db, 'users', inviterB_Id);
-    const bSnap = await getDoc(bRef);
-    if (!bSnap.exists()) return;
-    const bData = bSnap.data();
+    const bRes = await getResilientUser(inviterB_Id);
+    if (!bRes) return;
+    const bRef = bRes.ref;
+    const bData = bRes.data;
     const bLevel = bData?.currentLevel || 'Intern';
     if (jobLevelToNum(bLevel) >= jobLevelToNum(subordinateLevel)) {
       const commB = taskSingleCommission * 0.03;
@@ -227,7 +248,7 @@ async function fetchAndAwardTaskCommission(subordinateId: string, subordinateLev
         teamTasks: increment(commB)
       });
       await addDoc(collection(db, 'commissions'), {
-        userId: inviterB_Id,
+        userId: bRef.id,
         amount: commB,
         type: 'team_task',
         label: `Indirect Subordinate Task Commission`,
@@ -239,10 +260,10 @@ async function fetchAndAwardTaskCommission(subordinateId: string, subordinateLev
     // Level 3 Inviter (C)
     const inviterC_Id = (bData?.invitedBy || '').trim();
     if (!inviterC_Id) return;
-    const cRef = doc(db, 'users', inviterC_Id);
-    const cSnap = await getDoc(cRef);
-    if (!cSnap.exists()) return;
-    const cData = cSnap.data();
+    const cRes = await getResilientUser(inviterC_Id);
+    if (!cRes) return;
+    const cRef = cRes.ref;
+    const cData = cRes.data;
     const cLevel = cData?.currentLevel || 'Intern';
     if (jobLevelToNum(cLevel) >= jobLevelToNum(subordinateLevel)) {
       const commC = taskSingleCommission * 0.01;
@@ -251,7 +272,7 @@ async function fetchAndAwardTaskCommission(subordinateId: string, subordinateLev
         teamTasks: increment(commC)
       });
       await addDoc(collection(db, 'commissions'), {
-        userId: inviterC_Id,
+        userId: cRef.id,
         amount: commC,
         type: 'team_task',
         label: `Indirect Subordinate Task Commission`,
