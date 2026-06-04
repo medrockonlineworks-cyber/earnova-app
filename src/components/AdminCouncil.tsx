@@ -124,6 +124,11 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
   const [recentSalaries, setRecentSalaries] = useState<any[]>([]);
   const [loadingSalaries, setLoadingSalaries] = useState(false);
 
+  // States for zero-member system wipe
+  const [isWipingSystem, setIsWipingSystem] = useState(false);
+  const [showWipeConfirm, setShowWipeConfirm] = useState(false);
+  const [wipeCodeInput, setWipeCodeInput] = useState('');
+
   // Calculates Levels (A, B, C) direct & indirect subordinates
   const getActiveTeamLists = (managedUser: any) => {
     if (!managedUser) return { A: [], B: [], C: [] };
@@ -762,6 +767,104 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
     }
   };
 
+  const handleWipeAllUsers = async () => {
+    if (wipeCodeInput !== MASTER_CODE) {
+      alert("Invalid verification code! Please type 2026 to verify.");
+      return;
+    }
+    
+    setIsWipingSystem(true);
+    try {
+      const { collection, getDocs, deleteDoc, doc } = await import('firebase/firestore');
+      
+      // 1. Fetch and delete all recharges
+      const rechargesSnap = await getDocs(collection(db, 'recharges'));
+      for (const d of rechargesSnap.docs) {
+        try {
+          await deleteDoc(doc(db, 'recharges', d.id));
+        } catch (e) {
+          console.warn("Could not delete recharge doc", d.id, e);
+        }
+      }
+
+      // 2. Fetch and delete all withdrawals
+      const withdrawalsSnap = await getDocs(collection(db, 'withdrawals'));
+      for (const d of withdrawalsSnap.docs) {
+        try {
+          await deleteDoc(doc(db, 'withdrawals', d.id));
+        } catch (e) {
+          console.warn("Could not delete withdrawal doc", d.id, e);
+        }
+      }
+
+      // 3. Fetch and delete all chats
+      const chatsSnap = await getDocs(collection(db, 'chats'));
+      for (const d of chatsSnap.docs) {
+        try {
+          await deleteDoc(doc(db, 'chats', d.id));
+        } catch (e) {
+          console.warn("Could not delete chat doc", d.id, e);
+        }
+      }
+
+      // 4. Fetch and delete all commissions
+      const commissionsSnap = await getDocs(collection(db, 'commissions'));
+      for (const d of commissionsSnap.docs) {
+        try {
+          await deleteDoc(doc(db, 'commissions', d.id));
+        } catch (e) {
+          console.warn("Could not delete commission doc", d.id, e);
+        }
+      }
+
+      // 5. Fetch and delete all salary payouts
+      const salarySnap = await getDocs(collection(db, 'salary_payouts'));
+      for (const d of salarySnap.docs) {
+        try {
+          await deleteDoc(doc(db, 'salary_payouts', d.id));
+        } catch (e) {
+          console.warn("Could not delete salary payout doc", d.id, e);
+        }
+      }
+
+      // 6. Fetch and delete all users except admin
+      const usersSnap = await getDocs(collection(db, 'users'));
+      let deletedCount = 0;
+      for (const d of usersSnap.docs) {
+        const id = d.id;
+        const phone = id.trim();
+        // Admin numbers to protect: 0926193920 and 926193920
+        const isAdminPhone = phone === '0926193920' || phone === '926193920';
+        
+        if (!isAdminPhone) {
+          try {
+            await deleteDoc(doc(db, 'users', id));
+            deletedCount++;
+          } catch (e) {
+            console.error("Error deleting user document:", id, e);
+          }
+        }
+      }
+
+      if (WebApp?.HapticFeedback) {
+        WebApp.HapticFeedback.notificationOccurred('success');
+      }
+      setSuccessToast(`System wiped successfully! Deleted ${deletedCount} user records.`);
+      setTimeout(() => setSuccessToast(null), 4000);
+      
+      setShowWipeConfirm(false);
+      setWipeCodeInput('');
+      
+      // Refresh admin dataset
+      fetchAdminData();
+    } catch (err: any) {
+      console.error("Purging database error:", err);
+      setError(`Failed to purge database records: ${err?.message || err}`);
+    } finally {
+      setIsWipingSystem(false);
+    }
+  };
+
   const handleSystemReset = async () => {
     if (WebApp?.HapticFeedback) {
       WebApp.HapticFeedback.notificationOccurred('warning');
@@ -1217,6 +1320,86 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                   </div>
                 );
               })()}
+            </div>
+          )}
+
+          {/* Wipe Users / Zero Member Maintenance Panel (Only for Users tab) */}
+          {activeTab === 'USERS' && (
+            <div className="bg-rose-950/10 border border-rose-500/10 rounded-[24px] p-5 mb-6 relative z-10 backdrop-blur-md">
+              <div className="flex items-center justify-between gap-4 mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-500">
+                    <Trash2 size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-rose-400">Zero-Member System Clearance</h3>
+                    <p className="text-[9px] text-slate-400 font-bold">Permanently remove all members from the database except the administrator.</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="text-[10px] text-slate-300 mb-4 bg-[#0A0F1E]/60 p-3 rounded-2xl space-y-1 font-semibold leading-relaxed border border-rose-500/5">
+                <p>• Completely deletes all user registration records in the <span className="text-rose-400 font-bold">users</span> collection (except the system admin <span className="text-amber-500 font-bold">0926193920</span>).</p>
+                <p>• Cleans up all transactional logs (recharges, withdrawals, commissions, and salary payouts) to avoid orphaned database logs.</p>
+                <p>• <span className="text-amber-500 font-bold">Note:</span> This action is absolutely irreversible and set back the member count to zero.</p>
+              </div>
+
+              {!showWipeConfirm ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowWipeConfirm(true);
+                    if (WebApp?.HapticFeedback) WebApp.HapticFeedback.notificationOccurred('warning');
+                  }}
+                  className="px-5 py-3 bg-[#FF453A]/10 hover:bg-[#FF453A]/20 border border-[#FF453A]/20 transition-all rounded-xl text-[9px] font-black uppercase tracking-widest active:scale-[0.98] text-[#FF453A] cursor-pointer"
+                >
+                  Wipe All Users & Reset System
+                </button>
+              ) : (
+                <div className="space-y-4 p-4 bg-red-950/20 border border-red-500/20 rounded-2xl">
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black uppercase text-red-400 tracking-wider leading-normal">
+                      ⚠️ WARNING: Enter authorization code <span className="text-white hover:underline">"{MASTER_CODE}"</span> to finalize the database purge
+                    </p>
+                    <input
+                      type="text"
+                      placeholder="Enter activation code (default: 2026)"
+                      value={wipeCodeInput}
+                      onChange={(e) => setWipeCodeInput(e.target.value)}
+                      className="w-full max-w-xs bg-[#12182B]/60 border border-red-500/20 rounded-xl px-4 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-red-500 transition-all placeholder:text-[10px] placeholder:uppercase placeholder:tracking-wider placeholder:text-gray-600"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={isWipingSystem}
+                      onClick={handleWipeAllUsers}
+                      className="px-5 py-3 bg-[#FF453A] hover:bg-[#FF453A]/90 text-white rounded-xl text-[9px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(255,69,58,0.2)]"
+                    >
+                      {isWipingSystem ? (
+                        <>
+                          <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Purging Database...
+                        </>
+                      ) : (
+                        "Confirm & Purge"
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isWipingSystem}
+                      onClick={() => {
+                        setShowWipeConfirm(false);
+                        setWipeCodeInput('');
+                        if (WebApp?.HapticFeedback) WebApp.HapticFeedback.impactOccurred('light');
+                      }}
+                      className="px-5 py-3 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest active:scale-95 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
