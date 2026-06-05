@@ -176,10 +176,21 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
     }
     if (!validateInputs()) return;
 
+    const cleanPhone = phone.trim().replace(/\s+/g, '');
+
+    // Check if login is restricted to admin only during maintenance
+    const isAdmin = cleanPhone === '0926193920' || cleanPhone === '926193920';
+    if (!isAdmin) {
+      const msg = currentLang === 'AM' 
+        ? 'መግቢያ በጥገና ምክንያት ለአስተዳዳሪዎች ብቻ የተገደበ ነው:: በቅርቡ ተስተካክሎ የሚመለስ ይሆናል!' 
+        : 'Login is temporarily restricted during maintenance. It will be fixed and coming back soon!';
+      setErrorMsg(msg);
+      WebApp.HapticFeedback.notificationOccurred('error');
+      return;
+    }
+
     setIsLoading(true);
     WebApp.HapticFeedback.impactOccurred('medium');
-
-    const cleanPhone = phone.trim().replace(/\s+/g, '');
 
     try {
       // Always ensure we have an anonymous Firebase session for database rule compliance if allowed
