@@ -1031,17 +1031,25 @@ export default function App() {
         const q = query(
           collection(db, 'withdrawals'), 
           where('userId', '==', getUserDocId()),
-          orderBy('timestamp', 'desc'),
-          limit(1)
+          limit(50)
         );
         const querySnapshot = await getDocs(q);
+        const docs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+        docs.sort((a: any, b: any) => {
+          const getMs = (val: any) => {
+            if (!val) return 0;
+            if (val.seconds !== undefined) return val.seconds * 1000 + (val.nanoseconds || 0) / 1000000;
+            if (typeof val.toDate === 'function') return val.toDate().getTime();
+            return new Date(val).getTime();
+          };
+          return getMs(b.timestamp) - getMs(a.timestamp);
+        });
         
         const localToday = new Date();
         const localTodayStr = `${localToday.getFullYear()}-${localToday.getMonth() + 1}-${localToday.getDate()}`;
         
         let hasWithdrawnToday = false;
-        querySnapshot.forEach((docSnap) => {
-          const wData = docSnap.data();
+        docs.forEach((wData) => {
           if (wData.timestamp) {
             const wDate = wData.timestamp.toDate ? wData.timestamp.toDate() : new Date(wData.timestamp);
             if (wDate) {
@@ -4329,13 +4337,12 @@ function ProfilePage({
       }
 
       try {
-        const { collection, getDocs, query, where, orderBy, limit } = await import('firebase/firestore');
+        const { collection, getDocs, query, where, limit } = await import('firebase/firestore');
         const { db } = await import('./lib/firebase');
 
         const q = query(
           collection(db, 'taskHistory'),
           where('userId', '==', uid),
-          orderBy('timestamp', 'desc'),
           limit(1000)
         );
         const snapshot = await getDocs(q);
@@ -4355,11 +4362,16 @@ function ProfilePage({
           });
         });
 
+        items.sort((a, b) => {
+          const tA = a.date ? a.date.getTime() : 0;
+          const tB = b.date ? b.date.getTime() : 0;
+          return tB - tA;
+        });
+
         // Query all bonuses starting since day one
         const qb = query(
           collection(db, 'bonuses'),
           where('userId', '==', uid),
-          orderBy('timestamp', 'desc'),
           limit(1000)
         );
         const bonusSnapshot = await getDocs(qb);
@@ -4377,6 +4389,12 @@ function ProfilePage({
             amount: Number(data.amount) || 0,
             date: dateObj
           });
+        });
+
+        bItems.sort((a, b) => {
+          const tA = a.date ? a.date.getTime() : 0;
+          const tB = b.date ? b.date.getTime() : 0;
+          return tB - tA;
         });
 
         setBonusItems(bItems);

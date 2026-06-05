@@ -61,83 +61,117 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
       setLoading(true);
       
       const fetchData = async () => {
-        try {
-          const userId = getUserDocId();
+        const userId = getUserDocId();
+        const sortDescByTimestamp = (a: any, b: any) => {
+          const getMs = (val: any) => {
+            if (!val) return 0;
+            if (val.seconds !== undefined) return val.seconds * 1000 + (val.nanoseconds || 0) / 1000000;
+            if (typeof val.toDate === 'function') return val.toDate().getTime();
+            return new Date(val).getTime();
+          };
+          return getMs(b.timestamp) - getMs(a.timestamp);
+        };
 
-          // Fetch Recharges
+        // Fetch Recharges
+        try {
           const qr = query(
             collection(db, 'recharges'),
             where('userId', '==', userId),
-            orderBy('timestamp', 'desc'),
             limit(1000)
           );
           const rechargeSnap = await getDocs(qr);
-          if (!active) return;
-          setRecharges(rechargeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          if (active) {
+            const list = rechargeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            list.sort(sortDescByTimestamp);
+            setRecharges(list);
+          }
+        } catch (error) {
+          console.error("Error loading recharges history:", error);
+        }
 
-          // Fetch Withdrawals
+        // Fetch Withdrawals
+        try {
           const qw = query(
             collection(db, 'withdrawals'),
             where('userId', '==', userId),
-            orderBy('timestamp', 'desc'),
             limit(1000)
           );
           const withdrawSnap = await getDocs(qw);
-          if (!active) return;
-          setWithdrawals(withdrawSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          if (active) {
+            const list = withdrawSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            list.sort(sortDescByTimestamp);
+            setWithdrawals(list);
+          }
+        } catch (error) {
+          console.error("Error loading withdrawals history:", error);
+        }
 
-          // Fetch Bonuses
+        // Fetch Bonuses
+        try {
           const qb = query(
             collection(db, 'bonuses'),
             where('userId', '==', userId),
-            orderBy('timestamp', 'desc'),
             limit(1000)
           );
           const bonusSnap = await getDocs(qb);
-          if (!active) return;
-          setBonuses(bonusSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          if (active) {
+            const list = bonusSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            list.sort(sortDescByTimestamp);
+            setBonuses(list);
+          }
+        } catch (error) {
+          console.error("Error loading bonuses history:", error);
+        }
 
-          // Fetch Task Completions
+        // Fetch Task Completions
+        try {
           const qth = query(
             collection(db, 'taskHistory'),
             where('userId', '==', userId),
-            orderBy('timestamp', 'desc'),
             limit(1000)
           );
           const taskHistorySnap = await getDocs(qth);
-          if (!active) return;
-          setOwnCommissions(taskHistorySnap.docs.map(doc => ({ 
-            id: doc.id, 
-            amount: doc.data().commission, 
-            label: doc.data().taskTitle || 'Ad Task Completion',
-            type: 'personal_task',
-            timestamp: doc.data().timestamp
-          })));
+          if (active) {
+            const list = taskHistorySnap.docs.map(doc => ({ 
+              id: doc.id, 
+              amount: doc.data().commission, 
+              label: doc.data().taskTitle || 'Ad Task Completion',
+              type: 'personal_task',
+              timestamp: doc.data().timestamp
+            }));
+            list.sort(sortDescByTimestamp);
+            setOwnCommissions(list);
+          }
+        } catch (error) {
+          console.error("Error loading taskHistory:", error);
+        }
 
-          // Fetch Team Commissions
+        // Fetch Team Commissions
+        try {
           const qc = query(
             collection(db, 'commissions'),
             where('userId', '==', userId),
-            orderBy('timestamp', 'desc'),
             limit(1000)
           );
           const commissionsSnap = await getDocs(qc);
-          if (!active) return;
-          setTeamCommissions(commissionsSnap.docs.map(doc => ({ 
-            id: doc.id, 
-            amount: doc.data().amount, 
-            label: doc.data().label || 'Team Task Commission',
-            type: doc.data().type || 'team',
-            subordinatePhone: doc.data().subordinatePhone || '',
-            timestamp: doc.data().timestamp
-          })));
-
-        } catch (error) {
-          console.error("Error loading financial records:", error);
-        } finally {
           if (active) {
-            setLoading(false);
+            const list = commissionsSnap.docs.map(doc => ({ 
+              id: doc.id, 
+              amount: doc.data().amount, 
+              label: doc.data().label || 'Team Task Commission',
+              type: doc.data().type || 'team',
+              subordinatePhone: doc.data().subordinatePhone || '',
+              timestamp: doc.data().timestamp
+            }));
+            list.sort(sortDescByTimestamp);
+            setTeamCommissions(list);
           }
+        } catch (error) {
+          console.error("Error loading commissions:", error);
+        }
+
+        if (active) {
+          setLoading(false);
         }
       };
 

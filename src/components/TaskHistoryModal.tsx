@@ -43,7 +43,6 @@ export function TaskHistoryModal({ isOpen, onClose, t }: TaskHistoryModalProps) 
           const q = query(
             collection(db, 'taskHistory'),
             where('userId', '==', activeUserId),
-            orderBy('timestamp', 'desc'),
             limit(1000)
           );
           const snapshot = await getDocs(q);
@@ -51,7 +50,16 @@ export function TaskHistoryModal({ isOpen, onClose, t }: TaskHistoryModalProps) 
           const data = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
-          }));
+          } as any));
+          data.sort((a: any, b: any) => {
+            const getMs = (val: any) => {
+              if (!val) return 0;
+              if (val.seconds !== undefined) return val.seconds * 1000 + (val.nanoseconds || 0) / 1000000;
+              if (typeof val.toDate === 'function') return val.toDate().getTime();
+              return new Date(val).getTime();
+            };
+            return getMs(b.timestamp) - getMs(a.timestamp);
+          });
           setHistory(data);
         } catch (error) {
           console.warn("Firestore error fetching task history (using local backup):", error);
