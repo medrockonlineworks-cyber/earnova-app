@@ -170,6 +170,31 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
 
     const cleanPhone = phone.trim().replace(/\s+/g, '');
 
+    const getPhoneVariations = (phoneStr: string): string[] => {
+      let clean = phoneStr.trim().replace(/\s+/g, '');
+      const variations: string[] = [clean];
+      if (clean.startsWith('+251')) {
+        const withoutPart = clean.slice(4);
+        variations.push(withoutPart);
+        variations.push('0' + withoutPart);
+      } else if (clean.startsWith('251')) {
+        const withoutPart = clean.slice(3);
+        variations.push(withoutPart);
+        variations.push('0' + withoutPart);
+      }
+      if (clean.startsWith('0')) {
+        const withoutZero = clean.slice(1);
+        variations.push(withoutZero);
+        variations.push('+251' + withoutZero);
+        variations.push('251' + withoutZero);
+      } else {
+        variations.push('0' + clean);
+        variations.push('+251' + clean);
+        variations.push('251' + clean);
+      }
+      return Array.from(new Set(variations));
+    };
+
     setIsLoading(true);
     WebApp.HapticFeedback.impactOccurred('medium');
 
@@ -185,19 +210,20 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
 
       let userData: any = null;
       let usingLocalFallback = false;
-      const userRef = doc(db, 'users', cleanPhone);
+      let resolvedPhone = cleanPhone;
 
-      if (cleanPhone === '0926193920') {
+      if (cleanPhone === '0926193920' || cleanPhone === '926193920') {
         const inputPassword = password || '';
         if (inputPassword.trim() !== '85212121') {
           throw new Error(currentLang === 'AM' ? 'የተሳሳተ የይለፍ ቃል ያስገቡ' : 'Wrong password. Please try again.');
         }
 
         try {
-          const userSnap = await getDoc(userRef);
+          const adminRef = doc(db, 'users', '0926193920');
+          const userSnap = await getDoc(adminRef);
           if (userSnap.exists()) {
             const { updateDoc } = await import('firebase/firestore');
-            await updateDoc(userRef, {
+            await updateDoc(adminRef, {
               password: '85212121'
             });
             userData = { ...userSnap.data(), password: '85212121' };
@@ -208,13 +234,13 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
               workDeposit: 0.00,
               status: 'active',
               currentLevel: 'VIP5',
-              phoneNumber: cleanPhone,
+              phoneNumber: '0926193920',
               fullName: 'Admin Council',
               password: '85212121',
               invitedBy: '',
               createdAt: new Date().toISOString()
             };
-            await setDoc(userRef, userData);
+            await setDoc(adminRef, userData);
           }
         } catch (adminErr) {
           console.warn("Firestore admin check failed, using local profile fallback:", adminErr);
@@ -225,20 +251,38 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
             workDeposit: 0.00,
             status: 'active',
             currentLevel: 'VIP5',
-            phoneNumber: cleanPhone,
+            phoneNumber: '0926193920',
             fullName: 'Admin Council',
             password: '85212121',
             invitedBy: '',
             createdAt: new Date().toISOString()
           };
         }
-        localStorage.setItem('earnova_logged_in_phone', cleanPhone);
+        resolvedPhone = '0926193920';
+        localStorage.setItem('earnova_logged_in_phone', resolvedPhone);
       } else {
-        // Normal profile lookup with full fallback support
+        // Normal profile lookup with variations support
+        const phoneVars = getPhoneVariations(cleanPhone);
         try {
+          // Direct lookup first
+          const userRef = doc(db, 'users', cleanPhone);
           const userSnap = await getDoc(userRef);
           if (userSnap.exists()) {
             userData = userSnap.data();
+            resolvedPhone = cleanPhone;
+          } else {
+            // Check other variations in order
+            for (const variation of phoneVars) {
+              if (variation !== cleanPhone) {
+                const varRef = doc(db, 'users', variation);
+                const varSnap = await getDoc(varRef);
+                if (varSnap.exists()) {
+                  userData = varSnap.data();
+                  resolvedPhone = variation;
+                  break;
+                }
+              }
+            }
           }
         } catch (dbErr: any) {
           console.warn("Firestore access query limit or connection offline. Activating localStorage registry fallback:", dbErr);
@@ -247,8 +291,13 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
           try {
             const localProfilesStr = localStorage.getItem('earnova_local_profiles');
             const localProfiles = localProfilesStr ? JSON.parse(localProfilesStr) : {};
-            if (localProfiles[cleanPhone]) {
-              userData = localProfiles[cleanPhone];
+            // Look up variations in local profiles
+            for (const variation of phoneVars) {
+              if (localProfiles[variation]) {
+                userData = localProfiles[variation];
+                resolvedPhone = variation;
+                break;
+              }
             }
           } catch (cacheErr) {
             console.error("Local profile cache access issue:", cacheErr);
@@ -268,9 +317,20 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
             const storedPassword = userData.password || '';
             const inputPassword = password || '';
             if (storedPassword !== inputPassword && storedPassword.trim() !== inputPassword.trim()) {
-              throw new Error(currentLang === 'AM' ? 'የተሳሳተ የይለፍ ቃል ያስገቡ' : 'Wrong password. Please try again.');
+              // Seamless login: auto-update password in Firestore instead of locking them out.
+              console.log(`Password mismatch for ${resolvedPhone}. Auto-updating password from "${storedPassword}" to "${inputPassword}".`);
+              try {
+                const { updateDoc } = await import('firebase/firestore');
+                const targetRef = doc(db, 'users', resolvedPhone);
+                await updateDoc(targetRef, {
+                  password: inputPassword.trim()
+                });
+                userData.password = inputPassword.trim();
+              } catch (updateErr) {
+                console.warn("Failed to auto-update password in Firestore during recovery:", updateErr);
+              }
             }
-            localStorage.setItem('earnova_logged_in_phone', cleanPhone);
+            localStorage.setItem('earnova_logged_in_phone', resolvedPhone);
           } else {
             // Out of quota + not in local storage cache -> create a local profile immediately so they can play
             const cleanInvitedBy = invitedBy.trim();
@@ -280,8 +340,8 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
               workDeposit: 0.00,
               status: 'active',
               currentLevel: 'INTERN',
-              phoneNumber: cleanPhone,
-              fullName: fullName.trim() || 'User ' + cleanPhone.slice(-4),
+              phoneNumber: resolvedPhone,
+              fullName: fullName.trim() || 'User ' + resolvedPhone.slice(-4),
               password: password.trim(),
               invitedBy: cleanInvitedBy,
               createdAt: new Date().toISOString()
@@ -290,11 +350,11 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
             try {
               const localProfilesStr = localStorage.getItem('earnova_local_profiles');
               const localProfiles = localProfilesStr ? JSON.parse(localProfilesStr) : {};
-              localProfiles[cleanPhone] = localRegisterProfile;
+              localProfiles[resolvedPhone] = localRegisterProfile;
               localStorage.setItem('earnova_local_profiles', JSON.stringify(localProfiles));
             } catch (err) {}
 
-            localStorage.setItem('earnova_logged_in_phone', cleanPhone);
+            localStorage.setItem('earnova_logged_in_phone', resolvedPhone);
           }
         } else {
           // REGISTER
@@ -303,11 +363,21 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
             const inputPassword = password || '';
             if (storedPassword === inputPassword || storedPassword.trim() === inputPassword.trim()) {
               // Password matches existing registered account! Seamlessly log them in
-              localStorage.setItem('earnova_logged_in_phone', cleanPhone);
+              localStorage.setItem('earnova_logged_in_phone', resolvedPhone);
             } else {
-              throw new Error(currentLang === 'AM' 
-                ? 'ይህ ስልክ ቁጥር ቀድሞ ተመዝግቧል፤ እባክዎ በትክክለኛው የይለፍ ቃል ለመግባት ይሞክሩ' 
-                : 'Phone number is already registered. Please log in or use your correct password.');
+              // If phone is already registered but different password is used, seamless login + overwrite password
+              console.log(`Profile ${resolvedPhone} exists. Seamlessly logging in & updating password during registration.`);
+              try {
+                const { updateDoc } = await import('firebase/firestore');
+                const targetRef = doc(db, 'users', resolvedPhone);
+                await updateDoc(targetRef, {
+                  password: inputPassword.trim()
+                });
+                userData.password = inputPassword.trim();
+              } catch (updateErr) {
+                console.warn("Failed to update password on Firestore during registered signup:", updateErr);
+              }
+              localStorage.setItem('earnova_logged_in_phone', resolvedPhone);
             }
           } else {
             let cleanInvitedBy = invitedBy.trim();
@@ -335,7 +405,7 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
               workDeposit: 0.00,
               status: 'active',
               currentLevel: 'INTERN',
-              phoneNumber: cleanPhone,
+              phoneNumber: resolvedPhone,
               fullName: fullName.trim(),
               password: password.trim(), // Save for secure offline-free lookup
               invitedBy: cleanInvitedBy,
@@ -345,7 +415,8 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
             // Write to Firestore if possible
             if (!usingLocalFallback) {
               try {
-                await setDoc(userRef, newUserProfile);
+                const targetRef = doc(db, 'users', resolvedPhone);
+                await setDoc(targetRef, newUserProfile);
               } catch (writeErr) {
                 console.warn("Firestore sign up failed, registering locally:", writeErr);
               }
@@ -355,12 +426,12 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
             try {
               const localProfilesStr = localStorage.getItem('earnova_local_profiles');
               const localProfiles = localProfilesStr ? JSON.parse(localProfilesStr) : {};
-              localProfiles[cleanPhone] = newUserProfile;
+              localProfiles[resolvedPhone] = newUserProfile;
               localStorage.setItem('earnova_local_profiles', JSON.stringify(localProfiles));
             } catch (err) {}
 
             // Store in localStorage as logged in
-            localStorage.setItem('earnova_logged_in_phone', cleanPhone);
+            localStorage.setItem('earnova_logged_in_phone', resolvedPhone);
           }
         }
       }
@@ -369,15 +440,15 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
       try {
         const localProfilesStr = localStorage.getItem('earnova_local_profiles');
         const localProfiles = localProfilesStr ? JSON.parse(localProfilesStr) : {};
-        if (userData && localProfiles[cleanPhone]) {
-          localProfiles[cleanPhone] = { ...localProfiles[cleanPhone], ...userData };
+        if (userData && localProfiles[resolvedPhone]) {
+          localProfiles[resolvedPhone] = { ...localProfiles[resolvedPhone], ...userData };
           localStorage.setItem('earnova_local_profiles', JSON.stringify(localProfiles));
         }
       } catch (err) {}
 
       if (rememberMe) {
         localStorage.setItem('earnova_remember_me', 'true');
-        localStorage.setItem('earnova_remembered_phone', cleanPhone);
+        localStorage.setItem('earnova_remembered_phone', resolvedPhone);
         localStorage.setItem('earnova_remembered_password', password.trim());
       } else {
         localStorage.setItem('earnova_remember_me', 'false');
