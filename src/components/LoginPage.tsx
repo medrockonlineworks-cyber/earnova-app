@@ -166,28 +166,9 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
-    if (activeTab === 'REGISTER') {
-      const msg = currentLang === 'AM' 
-        ? 'ምዝገባ ለጊዜው በጥገና ላይ በመሆኑ ተዘግቷል። በቅርቡ ተስተካክሎ የሚመለስ ይሆናል!' 
-        : 'Registration is temporarily offline for maintenance. It will be fixed and coming back soon!';
-      setErrorMsg(msg);
-      WebApp.HapticFeedback.notificationOccurred('error');
-      return;
-    }
     if (!validateInputs()) return;
 
     const cleanPhone = phone.trim().replace(/\s+/g, '');
-
-    // Check if login is restricted to admin only during maintenance
-    const isAdmin = cleanPhone === '0926193920' || cleanPhone === '926193920';
-    if (!isAdmin) {
-      const msg = currentLang === 'AM' 
-        ? 'መግቢያ በጥገና ምክንያት ለአስተዳዳሪዎች ብቻ የተገደበ ነው:: በቅርቡ ተስተካክሎ የሚመለስ ይሆናል!' 
-        : 'Login is temporarily restricted during maintenance. It will be fixed and coming back soon!';
-      setErrorMsg(msg);
-      WebApp.HapticFeedback.notificationOccurred('error');
-      return;
-    }
 
     setIsLoading(true);
     WebApp.HapticFeedback.impactOccurred('medium');
@@ -595,169 +576,180 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
             </div>
 
             {/* Submission Form / Notice */}
-            {activeTab === 'REGISTER' ? (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-amber-500/5 border border-amber-500/20 rounded-[28px] p-6 text-center space-y-4 shadow-inner relative overflow-hidden backdrop-blur-sm"
-              >
-                <div className="absolute -top-10 -right-10 w-24 h-24 bg-amber-500/10 rounded-full pointer-events-none" />
-                <div className="w-14 h-14 bg-amber-500/10 rounded-2xl flex items-center justify-center text-amber-500 mx-auto border border-amber-500/20 shadow-md">
-                  <Sparkles size={24} className="animate-pulse" />
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {activeTab === 'REGISTER' && (
+                <div className="space-y-1.55">
+                  <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest pl-1">
+                    {currentLang === 'AM' ? 'ሙሉ ስም' : 'Full Name'}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => {
+                        setFullName(e.target.value);
+                        setIsFullNameDirty(true);
+                      }}
+                      onBlur={() => setIsFullNameDirty(true)}
+                      placeholder={currentLang === 'AM' ? 'ሙሉ ስምዎን ያስገቡ' : 'Enter your full name'}
+                      className={`w-full bg-white border ${
+                        fullNameError ? 'border-rose-500 focus:border-rose-500' : 'border-blue-50 focus:border-blue-500'
+                      } focus:bg-white p-4 pl-12 rounded-2xl text-xs font-bold text-gray-900 shadow-sm focus:outline-none transition-all text-left`}
+                    />
+                    <User size={16} className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${fullNameError ? 'text-rose-500' : 'text-gray-400'}`} />
+                  </div>
+                  {fullNameError && (
+                    <motion.p 
+                      initial={{ opacity: 0, y: -4 }} 
+                      animate={{ opacity: 1, y: 0 }} 
+                      className="text-[10px] font-bold text-rose-500 pl-1"
+                    >
+                      {fullNameError}
+                    </motion.p>
+                  )}
                 </div>
-                
-                <div className="space-y-2">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-amber-500 leading-tight">
-                    {currentLang === 'AM' ? 'ቀጣይ ምዝገባ ለጊዜው ቆሟል' : 'Registration Offline'}
-                  </h3>
-                  <p className="text-[10px] font-bold text-gray-500 leading-relaxed uppercase">
-                    {currentLang === 'AM' 
-                      ? 'አዲስ መለያ መፍጠር ለጊዜው በጥገና ላይ በመሆኑ ተዘግቷል። በቅርቡ ተስተካክሎ የሚመለስ ይሆናል!' 
-                      : currentLang === 'OR' 
-                        ? 'Galmeen haaraa yeroof suphaarra jira. Dhiyootti sirreeffamee kan deebi\'u ta\'a!'
-                        : currentLang === 'SO'
-                          ? 'Diiwaangelinta cusub si ku-meel-gaadh ah ayay u xidhan tay dayactir awgii. Dhawaan waa la hagaajin doonaa!'
-                          : 'New registration is temporarily offline for maintenance. It will be fixed and coming back soon!'}
-                  </p>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest pl-1">{currentLang === 'AM' ? 'ስልክ ቁጥር' : 'Phone Number'}</label>
+                <div className="relative">
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => {
+                      setPhone(e.target.value);
+                      setIsPhoneDirty(true);
+                    }}
+                    onBlur={() => setIsPhoneDirty(true)}
+                    placeholder="0912345678"
+                    className={`w-full bg-white border ${
+                      phoneError ? 'border-rose-500 focus:border-rose-500' : 'border-blue-50 focus:border-blue-500'
+                    } focus:bg-white p-4 pl-12 rounded-2xl text-xs font-bold text-gray-900 shadow-sm focus:outline-none transition-all text-left`}
+                  />
+                  <Phone size={16} className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${phoneError ? 'text-rose-500' : 'text-gray-400'}`} />
                 </div>
-                
-                <div className="pt-2">
+                {phoneError && (
+                  <motion.p 
+                    initial={{ opacity: 0, y: -4 }} 
+                    animate={{ opacity: 1, y: 0 }} 
+                    className="text-[10px] font-bold text-rose-500 pl-1"
+                  >
+                    {phoneError}
+                  </motion.p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest pl-1">{currentLang === 'AM' ? 'የይለፍ ቃል' : 'Password'}</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setIsPasswordDirty(true);
+                    }}
+                    onBlur={() => setIsPasswordDirty(true)}
+                    placeholder="••••••••"
+                    className={`w-full bg-white border ${
+                      passwordError ? 'border-rose-500 focus:border-rose-500' : 'border-blue-50 focus:border-blue-500'
+                    } focus:bg-white p-4 pl-12 pr-12 rounded-2xl text-xs font-bold text-gray-900 shadow-sm focus:outline-none transition-all`}
+                  />
+                  <Lock size={16} className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${passwordError ? 'text-rose-500' : 'text-gray-400'}`} />
                   <button
                     type="button"
                     onClick={() => {
-                      setActiveTab('LOGIN');
-                      setErrorMsg(null);
-                      WebApp.HapticFeedback.selectionChanged();
+                      setShowPassword(!showPassword);
+                      WebApp.HapticFeedback.impactOccurred('light');
                     }}
-                    className="w-full bg-[#12182B]/10 hover:bg-[#12182B]/20 transition-all text-[#12182B] rounded-2xl py-3.5 px-4 text-[9px] font-black uppercase tracking-widest active:scale-95 cursor-pointer shadow-sm"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
                   >
-                    {currentLang === 'AM' ? 'ወደ መግቢያ ተመለስ' : 'Return to Login'}
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
-              </motion.div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest pl-1">{currentLang === 'AM' ? 'ስልክ ቁጥር' : 'Phone Number'}</label>
-                  <div className="relative">
-                    <input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => {
-                        setPhone(e.target.value);
-                        setIsPhoneDirty(true);
-                      }}
-                      onBlur={() => setIsPhoneDirty(true)}
-                      placeholder="0912345678"
-                      className={`w-full bg-white border ${
-                        phoneError ? 'border-rose-500 focus:border-rose-500' : 'border-blue-50 focus:border-blue-500'
-                      } focus:bg-white p-4 pl-12 rounded-2xl text-xs font-bold text-gray-900 shadow-sm focus:outline-none transition-all text-left`}
-                    />
-                    <Phone size={16} className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${phoneError ? 'text-rose-500' : 'text-gray-400'}`} />
-                  </div>
-                  {phoneError && (
-                    <motion.p 
-                      initial={{ opacity: 0, y: -4 }} 
-                      animate={{ opacity: 1, y: 0 }} 
-                      className="text-[10px] font-bold text-rose-500 pl-1"
-                    >
-                      {phoneError}
-                    </motion.p>
-                  )}
-                </div>
+                {passwordError && (
+                  <motion.p 
+                    initial={{ opacity: 0, y: -4 }} 
+                    animate={{ opacity: 1, y: 0 }} 
+                    className="text-[10px] font-bold text-rose-500 pl-1"
+                  >
+                    {passwordError}
+                  </motion.p>
+                )}
+              </div>
 
+              {activeTab === 'REGISTER' && (
                 <div className="space-y-1.5">
-                  <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest pl-1">{currentLang === 'AM' ? 'የይለፍ ቃል' : 'Password'}</label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value);
-                        setIsPasswordDirty(true);
-                      }}
-                      onBlur={() => setIsPasswordDirty(true)}
-                      placeholder="••••••••"
-                      className={`w-full bg-white border ${
-                        passwordError ? 'border-rose-500 focus:border-rose-500' : 'border-blue-50 focus:border-blue-500'
-                      } focus:bg-white p-4 pl-12 pr-12 rounded-2xl text-xs font-bold text-gray-900 shadow-sm focus:outline-none transition-all`}
-                    />
-                    <Lock size={16} className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${passwordError ? 'text-rose-500' : 'text-gray-400'}`} />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowPassword(!showPassword);
-                        WebApp.HapticFeedback.impactOccurred('light');
-                      }}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                  {passwordError && (
-                    <motion.p 
-                      initial={{ opacity: 0, y: -4 }} 
-                      animate={{ opacity: 1, y: 0 }} 
-                      className="text-[10px] font-bold text-rose-500 pl-1"
-                    >
-                      {passwordError}
-                    </motion.p>
-                  )}
-                </div>
-
-                <div className="flex items-center pl-1 py-1">
-                  <label className="flex items-center gap-2.5 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        id="remember-me-checkbox"
-                        checked={rememberMe}
-                        onChange={(e) => {
-                          setRememberMe(e.target.checked);
-                          try {
-                            WebApp.HapticFeedback.selectionChanged();
-                          } catch {}
-                        }}
-                        className="sr-only"
-                      />
-                      <div className={`w-4 h-4 rounded flex items-center justify-center border transition-all ${
-                        rememberMe 
-                          ? 'bg-blue-600 border-blue-600 text-white' 
-                          : 'bg-white border-blue-100 group-hover:border-blue-300'
-                      }`}>
-                        {rememberMe && (
-                          <svg className="w-2.5 h-2.5 fill-none" viewBox="0 0 24 24">
-                            <polyline points="4 12 9 17 20 6" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                      </div>
-                    </div>
-                    <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest select-none">
-                      {currentLang === 'AM' ? 'የይለፍ ቃል አስታውስ' : currentLang === 'OR' ? 'Na Yaadadhu' : currentLang === 'SO' ? 'I xasuuso' : 'Remember Me'}
-                    </span>
+                  <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest pl-1">
+                    {currentLang === 'AM' ? 'የግብዣ ኮድ (ከተፈለገ)' : 'Invitation Code (Optional)'}
                   </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={invitedBy}
+                      onChange={(e) => {
+                        setInvitedBy(e.target.value);
+                      }}
+                      placeholder={currentLang === 'AM' ? 'የግብዣ ኮድ ያስገቡ' : 'Enter invitation code'}
+                      className="w-full bg-white border border-blue-50 focus:border-blue-500 focus:bg-white p-4 pl-12 rounded-2xl text-xs font-bold text-gray-900 shadow-sm focus:outline-none transition-all text-left"
+                    />
+                    <Sparkles size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                  </div>
                 </div>
+              )}
 
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white p-4.5 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-xl shadow-blue-500/10 active:scale-95 transition-all disabled:opacity-50 mt-2"
-                >
-                  {isLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <span>
-                        {activeTab === 'LOGIN' 
-                          ? (currentLang === 'AM' ? 'ግባ' : 'Access Account') 
-                          : (currentLang === 'AM' ? 'መለያ ፍጠር' : 'Launch Account')}
-                      </span>
-                      <ArrowRight size={14} className="stroke-[3]" />
-                    </>
-                  )}
-                </button>
-              </form>
-            )}
+              <div className="flex items-center pl-1 py-1">
+                <label className="flex items-center gap-2.5 cursor-pointer group">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      id="remember-me-checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => {
+                        setRememberMe(e.target.checked);
+                        try {
+                          WebApp.HapticFeedback.selectionChanged();
+                        } catch {}
+                      }}
+                      className="sr-only"
+                    />
+                    <div className={`w-4 h-4 rounded flex items-center justify-center border transition-all ${
+                      rememberMe 
+                        ? 'bg-blue-600 border-blue-600 text-white' 
+                        : 'bg-white border-blue-100 group-hover:border-blue-300'
+                    }`}>
+                      {rememberMe && (
+                        <svg className="w-2.5 h-2.5 fill-none" viewBox="0 0 24 24">
+                          <polyline points="4 12 9 17 20 6" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest select-none">
+                    {currentLang === 'AM' ? 'የይለፍ ቃል አስታውስ' : currentLang === 'OR' ? 'Na Yaadadhu' : currentLang === 'SO' ? 'I xasuuso' : 'Remember Me'}
+                  </span>
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white p-4.5 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-xl shadow-blue-500/10 active:scale-95 transition-all disabled:opacity-50 mt-2"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <span>
+                      {activeTab === 'LOGIN' 
+                        ? (currentLang === 'AM' ? 'ግባ' : 'Access Account') 
+                        : (currentLang === 'AM' ? 'መለያ ፍጠር' : 'Launch Account')}
+                    </span>
+                    <ArrowRight size={14} className="stroke-[3]" />
+                  </>
+                )}
+              </button>
+            </form>
 
             {/* Footer space alignment */}
             <div className="pt-2"></div>
