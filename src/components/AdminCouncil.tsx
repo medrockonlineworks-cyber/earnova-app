@@ -536,6 +536,8 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
       WebApp.HapticFeedback.notificationOccurred('warning');
       await deleteDoc(doc(db, 'users', userId));
       
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
+      
       if (selectedUserForManagement && selectedUserForManagement.id === userId) {
         setSelectedUserForManagement(null);
       }
@@ -554,6 +556,10 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
       const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
       await setDoc(doc(db, 'users', userId), { status: newStatus }, { merge: true });
       
+      setUsers((prevUsers) =>
+        prevUsers.map((u) => (u.id === userId ? { ...u, status: newStatus } : u))
+      );
+
       if (selectedUserForManagement && selectedUserForManagement.id === userId) {
         setSelectedUserForManagement((prev: any) => ({
           ...prev,
