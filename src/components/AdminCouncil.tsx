@@ -529,22 +529,27 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
   };
 
   const handleDeleteUser = async (userId: string) => {
-    try {
-      const confirmed = window.confirm("Are you absolutely sure you want to permanently delete this user? This action cannot be undone.");
-      if (!confirmed) return;
+    const confirmed = window.confirm("Are you absolutely sure you want to permanently delete this user? This action cannot be undone.");
+    if (!confirmed) return;
 
+    const previousUsers = [...users];
+
+    try {
       WebApp.HapticFeedback.notificationOccurred('warning');
-      await deleteDoc(doc(db, 'users', userId));
       
+      // Optimistic update: instantly remove from UI
       setUsers((prev) => prev.filter((u) => u.id !== userId));
-      
       if (selectedUserForManagement && selectedUserForManagement.id === userId) {
         setSelectedUserForManagement(null);
       }
-      
       setSuccessToast("User permanently removed from system!");
       setTimeout(() => setSuccessToast(null), 3000);
+
+      // Perform actual delete in Firestore background
+      await deleteDoc(doc(db, 'users', userId));
     } catch (err: any) {
+      // Revert state if backend request failed
+      setUsers(previousUsers);
       console.error("User deletion error:", err);
       alert("Failed to delete user: " + err.message);
     }
@@ -783,74 +788,86 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
     try {
       const { collection, getDocs, deleteDoc, doc } = await import('firebase/firestore');
       
-      // 1. Fetch and delete all recharges
+      // 1. Fetch and delete all recharges in parallel
       const rechargesSnap = await getDocs(collection(db, 'recharges'));
-      for (const d of rechargesSnap.docs) {
-        try {
-          await deleteDoc(doc(db, 'recharges', d.id));
-        } catch (e) {
-          console.warn("Could not delete recharge doc", d.id, e);
-        }
-      }
+      await Promise.all(
+        rechargesSnap.docs.map(async (d) => {
+          try {
+            await deleteDoc(doc(db, 'recharges', d.id));
+          } catch (e) {
+            console.warn("Could not delete recharge doc", d.id, e);
+          }
+        })
+      );
 
-      // 2. Fetch and delete all withdrawals
+      // 2. Fetch and delete all withdrawals in parallel
       const withdrawalsSnap = await getDocs(collection(db, 'withdrawals'));
-      for (const d of withdrawalsSnap.docs) {
-        try {
-          await deleteDoc(doc(db, 'withdrawals', d.id));
-        } catch (e) {
-          console.warn("Could not delete withdrawal doc", d.id, e);
-        }
-      }
+      await Promise.all(
+        withdrawalsSnap.docs.map(async (d) => {
+          try {
+            await deleteDoc(doc(db, 'withdrawals', d.id));
+          } catch (e) {
+            console.warn("Could not delete withdrawal doc", d.id, e);
+          }
+        })
+      );
 
-      // 3. Fetch and delete all chats
+      // 3. Fetch and delete all chats in parallel
       const chatsSnap = await getDocs(collection(db, 'chats'));
-      for (const d of chatsSnap.docs) {
-        try {
-          await deleteDoc(doc(db, 'chats', d.id));
-        } catch (e) {
-          console.warn("Could not delete chat doc", d.id, e);
-        }
-      }
+      await Promise.all(
+        chatsSnap.docs.map(async (d) => {
+          try {
+            await deleteDoc(doc(db, 'chats', d.id));
+          } catch (e) {
+            console.warn("Could not delete chat doc", d.id, e);
+          }
+        })
+      );
 
-      // 4. Fetch and delete all commissions
+      // 4. Fetch and delete all commissions in parallel
       const commissionsSnap = await getDocs(collection(db, 'commissions'));
-      for (const d of commissionsSnap.docs) {
-        try {
-          await deleteDoc(doc(db, 'commissions', d.id));
-        } catch (e) {
-          console.warn("Could not delete commission doc", d.id, e);
-        }
-      }
+      await Promise.all(
+        commissionsSnap.docs.map(async (d) => {
+          try {
+            await deleteDoc(doc(db, 'commissions', d.id));
+          } catch (e) {
+            console.warn("Could not delete commission doc", d.id, e);
+          }
+        })
+      );
 
-      // 5. Fetch and delete all salary payouts
+      // 5. Fetch and delete all salary payouts in parallel
       const salarySnap = await getDocs(collection(db, 'salary_payouts'));
-      for (const d of salarySnap.docs) {
-        try {
-          await deleteDoc(doc(db, 'salary_payouts', d.id));
-        } catch (e) {
-          console.warn("Could not delete salary payout doc", d.id, e);
-        }
-      }
+      await Promise.all(
+        salarySnap.docs.map(async (d) => {
+          try {
+            await deleteDoc(doc(db, 'salary_payouts', d.id));
+          } catch (e) {
+            console.warn("Could not delete salary payout doc", d.id, e);
+          }
+        })
+      );
 
-      // 6. Fetch and delete all users except admin
+      // 6. Fetch and delete all users except admin in parallel
       const usersSnap = await getDocs(collection(db, 'users'));
       let deletedCount = 0;
-      for (const d of usersSnap.docs) {
-        const id = d.id;
-        const phone = id.trim();
-        // Admin numbers to protect: 0926193920 and 926193920
-        const isAdminPhone = phone === '0926193920' || phone === '926193920';
-        
-        if (!isAdminPhone) {
-          try {
-            await deleteDoc(doc(db, 'users', id));
-            deletedCount++;
-          } catch (e) {
-            console.error("Error deleting user document:", id, e);
+      await Promise.all(
+        usersSnap.docs.map(async (d) => {
+          const id = d.id;
+          const phone = id.trim();
+          // Admin numbers to protect: 0926193920 and 926193920
+          const isAdminPhone = phone === '0926193920' || phone === '926193920';
+          
+          if (!isAdminPhone) {
+            try {
+              await deleteDoc(doc(db, 'users', id));
+              deletedCount++;
+            } catch (e) {
+              console.error("Error deleting user document:", id, e);
+            }
           }
-        }
-      }
+        })
+      );
 
       if (WebApp?.HapticFeedback) {
         WebApp.HapticFeedback.notificationOccurred('success');
@@ -881,65 +898,73 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
       try {
         const { doc, setDoc, deleteDoc, collection, getDocs } = await import('firebase/firestore');
         
-        // 1. Delete all recharges
+        // 1. Delete all recharges in parallel
         const rechargesSnap = await getDocs(collection(db, 'recharges'));
-        for (const d of rechargesSnap.docs) {
-          try {
-            await deleteDoc(doc(db, 'recharges', d.id));
-          } catch (e) {
-            console.error("Error deleting recharge:", d.id, e);
-          }
-        }
-
-        // 2. Delete all withdrawals
-        const withdrawalsSnap = await getDocs(collection(db, 'withdrawals'));
-        for (const d of withdrawalsSnap.docs) {
-          try {
-            await deleteDoc(doc(db, 'withdrawals', d.id));
-          } catch (e) {
-            console.error("Error deleting withdrawal:", d.id, e);
-          }
-        }
-
-        // 3. Delete all chats
-        const chatsSnap = await getDocs(collection(db, 'chats'));
-        for (const d of chatsSnap.docs) {
-          try {
-            await deleteDoc(doc(db, 'chats', d.id));
-          } catch (e) {
-            console.error("Error deleting chat:", d.id, e);
-          }
-        }
-
-        // 4. Reset or delete users
-        const usersSnap = await getDocs(collection(db, 'users'));
-        for (const d of usersSnap.docs) {
-          const userData = d.data();
-          if (d.id === activeUserId) {
-            // Keep the admin user alive but restore starting values
-            await setDoc(doc(db, 'users', d.id), {
-              personal: 0.00,
-              income: 0.00,
-              workDeposit: 0.00,
-              completedTaskIds: [],
-              onboardingClaimed: false,
-              currentLevel: 'INTERN',
-              status: 'active',
-              role: 'admin',
-              totalRecharged: 0,
-              totalWithdrawn: 0,
-              invitedBy: "",
-              investments: []
-            });
-          } else if (userData.role !== 'admin') {
-            // Delete all other non-admin users to clean up registrations and referral trees
+        await Promise.all(
+          rechargesSnap.docs.map(async (d) => {
             try {
-              await deleteDoc(doc(db, 'users', d.id));
+              await deleteDoc(doc(db, 'recharges', d.id));
             } catch (e) {
-              console.error("Error deleting user:", d.id, e);
+              console.error("Error deleting recharge:", d.id, e);
             }
-          }
-        }
+          })
+        );
+
+        // 2. Delete all withdrawals in parallel
+        const withdrawalsSnap = await getDocs(collection(db, 'withdrawals'));
+        await Promise.all(
+          withdrawalsSnap.docs.map(async (d) => {
+            try {
+              await deleteDoc(doc(db, 'withdrawals', d.id));
+            } catch (e) {
+              console.error("Error deleting withdrawal:", d.id, e);
+            }
+          })
+        );
+
+        // 3. Delete all chats in parallel
+        const chatsSnap = await getDocs(collection(db, 'chats'));
+        await Promise.all(
+          chatsSnap.docs.map(async (d) => {
+            try {
+              await deleteDoc(doc(db, 'chats', d.id));
+            } catch (e) {
+              console.error("Error deleting chat:", d.id, e);
+            }
+          })
+        );
+
+        // 4. Reset or delete users in parallel
+        const usersSnap = await getDocs(collection(db, 'users'));
+        await Promise.all(
+          usersSnap.docs.map(async (d) => {
+            const userData = d.data();
+            if (d.id === activeUserId) {
+              // Keep the admin user alive but restore starting values
+              await setDoc(doc(db, 'users', d.id), {
+                personal: 0.00,
+                income: 0.00,
+                workDeposit: 0.00,
+                completedTaskIds: [],
+                onboardingClaimed: false,
+                currentLevel: 'INTERN',
+                status: 'active',
+                role: 'admin',
+                totalRecharged: 0,
+                totalWithdrawn: 0,
+                invitedBy: "",
+                investments: []
+              });
+            } else if (userData.role !== 'admin') {
+              // Delete all other non-admin users to clean up registrations and referral trees
+              try {
+                await deleteDoc(doc(db, 'users', d.id));
+              } catch (e) {
+                console.error("Error deleting user:", d.id, e);
+              }
+            }
+          })
+        );
       } catch (err) {
         console.error("Error resetting application in Firestore:", err);
       }
