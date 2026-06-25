@@ -4511,13 +4511,13 @@ function ProfilePage({
     year: 'numeric',
     month: 'short',
     day: 'numeric'
-  }) : 'May 24, 2026';
+  }) : 'Jun 25, 2026';
 
   const endContractDateStr = createdAt ? new Date(new Date(createdAt).getTime() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric'
-  }) : 'May 24, 2027';
+  }) : 'Jun 25, 2027';
 
   let totalCommissionsEarned = 0;
   historyItems.forEach((item) => {

@@ -32,7 +32,7 @@ export function PersonalInfoModal({ isOpen, onClose, userPhone, fullName, email 
     { label: 'Email Address', value: email && email.includes('@') ? email : 'Not Set', icon: Mail },
     { label: 'Phone Number', value: formattedPhone, icon: Phone },
     { label: 'Bank Account', value: 'CBE •••• 5678', icon: CreditCard },
-    { label: 'Join Date', value: 'May 24, 2026', icon: Calendar },
+    { label: 'Join Date', value: 'June 25, 2026', icon: Calendar },
     { label: 'Account Status', value: 'Verified', icon: ShieldCheck, color: 'text-emerald-500' },
     { label: 'Region', value: 'Ethiopia', icon: Globe },
   ];
