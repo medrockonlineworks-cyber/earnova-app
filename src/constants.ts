@@ -33,16 +33,16 @@ export interface Investment {
 
 export const JOBS: Job[] = [
   { id: '0', level: JobLevel.INTERN, deposit: 0, dailyTasks: 5, eachOrder: 22, color: 'text-amber-900', bgColor: 'bg-amber-50' },
-  { id: '1', level: JobLevel.JOB1, deposit: 4000, dailyTasks: 5, eachOrder: 26, color: 'text-orange-900', bgColor: 'bg-orange-50' },
-  { id: '2', level: JobLevel.JOB2, deposit: 10000, dailyTasks: 10, eachOrder: 33, color: 'text-blue-900', bgColor: 'bg-blue-50' },
-  { id: '3', level: JobLevel.JOB3, deposit: 30000, dailyTasks: 15, eachOrder: 69, color: 'text-emerald-900', bgColor: 'bg-emerald-50' },
-  { id: '4', level: JobLevel.JOB4, deposit: 60000, dailyTasks: 30, eachOrder: 70, color: 'text-rose-900', bgColor: 'bg-rose-50' },
-  { id: '5', level: JobLevel.JOB5, deposit: 120000, dailyTasks: 50, eachOrder: 87, color: 'text-sky-900', bgColor: 'bg-sky-50' },
-  { id: '6', level: JobLevel.JOB6, deposit: 200000, dailyTasks: 80, eachOrder: 93, color: 'text-purple-900', bgColor: 'bg-purple-50' },
-  { id: '7', level: JobLevel.JOB7, deposit: 350000, dailyTasks: 130, eachOrder: 103, color: 'text-indigo-900', bgColor: 'bg-indigo-50' },
-  { id: '8', level: JobLevel.JOB8, deposit: 800000, dailyTasks: 200, eachOrder: 160, color: 'text-fuchsia-900', bgColor: 'bg-fuchsia-50' },
-  { id: '9', level: JobLevel.JOB9, deposit: 1600000, dailyTasks: 350, eachOrder: 192, color: 'text-pink-900', bgColor: 'bg-pink-50' },
-  { id: '10', level: JobLevel.JOB10, deposit: 3200000, dailyTasks: 600, eachOrder: 240, color: 'text-amber-900', bgColor: 'bg-amber-100' },
+  { id: '1', level: JobLevel.JOB1, deposit: 1500, dailyTasks: 5, eachOrder: 26, color: 'text-orange-900', bgColor: 'bg-orange-50' },
+  { id: '2', level: JobLevel.JOB2, deposit: 4000, dailyTasks: 10, eachOrder: 33, color: 'text-blue-900', bgColor: 'bg-blue-50' },
+  { id: '3', level: JobLevel.JOB3, deposit: 10000, dailyTasks: 15, eachOrder: 69, color: 'text-emerald-900', bgColor: 'bg-emerald-50' },
+  { id: '4', level: JobLevel.JOB4, deposit: 25000, dailyTasks: 30, eachOrder: 70, color: 'text-rose-900', bgColor: 'bg-rose-50' },
+  { id: '5', level: JobLevel.JOB5, deposit: 60000, dailyTasks: 50, eachOrder: 87, color: 'text-sky-900', bgColor: 'bg-sky-50' },
+  { id: '6', level: JobLevel.JOB6, deposit: 120000, dailyTasks: 80, eachOrder: 93, color: 'text-purple-900', bgColor: 'bg-purple-50' },
+  { id: '7', level: JobLevel.JOB7, deposit: 200000, dailyTasks: 130, eachOrder: 103, color: 'text-indigo-900', bgColor: 'bg-indigo-50' },
+  { id: '8', level: JobLevel.JOB8, deposit: 350000, dailyTasks: 200, eachOrder: 160, color: 'text-fuchsia-900', bgColor: 'bg-fuchsia-50' },
+  { id: '9', level: JobLevel.JOB9, deposit: 800000, dailyTasks: 350, eachOrder: 192, color: 'text-pink-900', bgColor: 'bg-pink-50' },
+  { id: '10', level: JobLevel.JOB10, deposit: 1600000, dailyTasks: 600, eachOrder: 240, color: 'text-amber-900', bgColor: 'bg-amber-100' },
 ];
 
 export interface PositionRule {
@@ -70,16 +70,16 @@ export interface CommissionRule {
 }
 
 export const UP_LEVEL_RULES: CommissionRule[] = [
-  { level: 'JOB1', ratio: '12%-4%-2%', level1: 480, level2: 160, level3: 80 },
-  { level: 'JOB2', ratio: '12%-4%-2%', level1: 1200, level2: 400, level3: 200 },
-  { level: 'JOB3', ratio: '12%-4%-2%', level1: 3600, level2: 1200, level3: 600 },
-  { level: 'JOB4', ratio: '12%-4%-2%', level1: 7200, level2: 2400, level3: 1200 },
-  { level: 'JOB5', ratio: '12%-4%-2%', level1: 14400, level2: 4800, level3: 2400 },
-  { level: 'JOB6', ratio: '12%-4%-2%', level1: 24000, level2: 8000, level3: 4000 },
-  { level: 'JOB7', ratio: '12%-4%-2%', level1: 42000, level2: 14000, level3: 7000 },
-  { level: 'JOB8', ratio: '12%-4%-2%', level1: 96000, level2: 32000, level3: 16000 },
-  { level: 'JOB9', ratio: '12%-4%-2%', level1: 192000, level2: 64000, level3: 32000 },
-  { level: 'JOB10', ratio: '12%-4%-2%', level1: 384000, level2: 128000, level3: 64000 },
+  { level: 'JOB1', ratio: '12%-4%-2%', level1: 180, level2: 60, level3: 30 },
+  { level: 'JOB2', ratio: '12%-4%-2%', level1: 480, level2: 160, level3: 80 },
+  { level: 'JOB3', ratio: '12%-4%-2%', level1: 1200, level2: 400, level3: 200 },
+  { level: 'JOB4', ratio: '12%-4%-2%', level1: 3000, level2: 1000, level3: 500 },
+  { level: 'JOB5', ratio: '12%-4%-2%', level1: 7200, level2: 2400, level3: 1200 },
+  { level: 'JOB6', ratio: '12%-4%-2%', level1: 14400, level2: 4800, level3: 2400 },
+  { level: 'JOB7', ratio: '12%-4%-2%', level1: 24000, level2: 8000, level3: 4000 },
+  { level: 'JOB8', ratio: '12%-4%-2%', level1: 42000, level2: 14000, level3: 7000 },
+  { level: 'JOB9', ratio: '12%-4%-2%', level1: 96000, level2: 32000, level3: 16000 },
+  { level: 'JOB10', ratio: '12%-4%-2%', level1: 192000, level2: 64000, level3: 32000 },
 ];
 
 export const TASK_RULES: CommissionRule[] = [
