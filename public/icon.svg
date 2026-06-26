@@ -2,9 +2,17 @@
   <!-- Background: Clean modern royal blue -->
   <rect width="512" height="512" rx="120" fill="#1b60ff" />
   
-  <!-- Content: Clean bold sans-serif capital "E" in white constructed as a precise vector path -->
-  <path 
-    d="M 166 126 L 346 126 L 346 174 L 221 174 L 221 234 L 306 234 L 306 278 L 221 278 L 221 338 L 346 338 L 346 386 L 166 386 Z" 
+  <!-- Content: Clean bold sans-serif capital "EL" in white -->
+  <text 
+    x="50%" 
+    y="54%" 
+    font-family="system-ui, -apple-system, sans-serif" 
+    font-weight="900" 
+    font-style="italic" 
+    font-size="230" 
     fill="#FFFFFF" 
-  />
+    dominant-baseline="middle" 
+    text-anchor="middle"
+    letter-spacing="-10"
+  >EL</text>
 </svg>
