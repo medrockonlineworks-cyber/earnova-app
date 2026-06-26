@@ -52,13 +52,13 @@ export interface PositionRule {
 }
 
 export const POSITION_RULES: PositionRule[] = [
-  { position: 'Internship Assistant', teamSize: '15 direct reports', monthlySalary: 8000 },
-  { position: 'Official Assistant', teamSize: '25 direct reports', monthlySalary: 16000 },
-  { position: 'Formal Supervisor', teamSize: '25-150-person team', monthlySalary: 50000 },
-  { position: 'Marketing Manager', teamSize: '25-500-person team', monthlySalary: 120000 },
-  { position: 'Regional Manager', teamSize: '25-1500-person team', monthlySalary: 250000 },
-  { position: 'Marketing Director', teamSize: '25-3500-person team', monthlySalary: 600000 },
-  { position: 'Company Partner', teamSize: '25-7000-person team', monthlySalary: 1300000 },
+  { position: 'Internship Assistant', teamSize: '15 direct reports', monthlySalary: 6000 },
+  { position: 'Official Assistant', teamSize: '25 direct reports', monthlySalary: 10000 },
+  { position: 'Formal Supervisor', teamSize: '25-150-person team', monthlySalary: 18000 },
+  { position: 'Marketing Manager', teamSize: '25-500-person team', monthlySalary: 35000 },
+  { position: 'Regional Manager', teamSize: '25-1500-person team', monthlySalary: 70000 },
+  { position: 'Marketing Director', teamSize: '25-3500-person team', monthlySalary: 150000 },
+  { position: 'Company Partner', teamSize: '25-7000-person team', monthlySalary: 300000 },
 ];
 
 export interface CommissionRule {

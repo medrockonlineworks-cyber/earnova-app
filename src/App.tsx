@@ -933,7 +933,7 @@ export default function App() {
       setShowTeamModal(true);
       return;
     }
-    if (action === 'INVITATION' || action === 'INVITE' || action === 'Share EARNOVA') {
+    if (action === 'INVITATION' || action === 'INVITE' || action === 'Share EarnLink') {
       setShowInviteModal(true);
       return;
     }
@@ -1539,7 +1539,7 @@ export default function App() {
             <p className="text-xs text-neutral-400 leading-relaxed mb-8">
               {currentLang === 'AM' 
                 ? 'ይህ አካውንት በህግና ደንብ መጣስ ምክንያት ለጊዜው ታግዷል። እባክዎን ማብራሪያ ለማግኘት የደንበኞች አገልግሎትን ያነጋግሩ።' 
-                : 'Your EarNova account has been temporarily locked or suspended due to a compliance verification review. Please contact support immediately to help restore access.'}
+                : 'Your EarnLink account has been temporarily locked or suspended due to a compliance verification review. Please contact support immediately to help restore access.'}
             </p>
             <div className="flex flex-col gap-3 w-full max-w-xs">
               <button
@@ -1805,9 +1805,9 @@ export default function App() {
 
               <div className="space-y-1.5 pt-2">
                 <div className="w-16 h-16 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-xl shadow-blue-500/20">
-                  <span className="text-2xl font-black text-white italic">E</span>
+                  <span className="text-2xl font-black text-white italic">EL</span>
                 </div>
-                <h3 className="text-lg font-black italic text-white uppercase tracking-tight pt-1 leading-none">DOWNLOAD EARNOVA APP</h3>
+                <h3 className="text-lg font-black italic text-white uppercase tracking-tight pt-1 leading-none">DOWNLOAD EarnLink APP</h3>
                 <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Install to your device for instant launch and premium access</p>
               </div>
 
@@ -1968,9 +1968,9 @@ function Header({ onAction, currentLang, setCurrentLang, t }: { onAction: (a: st
     <header className="flex-shrink-0 z-[60] bg-white px-4 py-3 flex items-center justify-between shadow-sm">
       <div className="flex items-center gap-2">
         <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">
-          E
+          EL
         </div>
-        <span className="text-blue-600 font-black italic text-2xl tracking-tighter">EARNOVA</span>
+        <span className="text-blue-600 font-black italic text-2xl tracking-tighter">EarnLink</span>
       </div>
       <div className="flex items-center gap-3 relative">
         <button 
@@ -4669,8 +4669,8 @@ function ProfilePage({
           <div className="flex items-start justify-between relative z-10">
             <div className="space-y-1">
               <span className="text-[8px] font-black text-amber-505 bg-amber-500/15 border border-amber-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-widest leading-none">PWA Installer</span>
-              <h3 className="text-sm font-black text-white uppercase tracking-tight italic pt-1">EARNOVA native app</h3>
-              <p className="text-[9.5px] text-gray-405 font-bold leading-relaxed max-w-[200px]">Install EARNOVA directly to your mobile home screen with fast 1-tap ecosystem access.</p>
+              <h3 className="text-sm font-black text-white uppercase tracking-tight italic pt-1">EarnLink native app</h3>
+              <p className="text-[9.5px] text-gray-405 font-bold leading-relaxed max-w-[200px]">Install EarnLink directly to your mobile home screen with fast 1-tap ecosystem access.</p>
             </div>
             <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
               <Download size={18} className="animate-pulse" />

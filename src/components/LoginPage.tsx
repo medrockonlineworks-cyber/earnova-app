@@ -518,9 +518,9 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
       <div className="flex justify-between items-center relative z-50">
         <div className="flex items-center gap-1.5">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black text-md">
-            E
+            EL
           </div>
-          <span className="text-blue-600 font-black italic text-lg tracking-tighter">EARNOVA</span>
+          <span className="text-blue-600 font-black italic text-lg tracking-tighter">EarnLink</span>
         </div>
 
         <div className="relative">
