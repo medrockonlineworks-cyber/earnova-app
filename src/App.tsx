@@ -955,7 +955,7 @@ export default function App() {
 
   const handleGiftReward = async (amount: number, code: string) => {
     // Increment local state balance
-    setBalance(prev => ({ ...prev, personal: (prev.personal || 0) + amount }));
+    setBalance(prev => ({ ...prev, income: (prev.income || 0) + amount }));
 
     // Add to Firestore database
     const userDocId = getUserDocId();
@@ -964,7 +964,7 @@ export default function App() {
       const { db } = await import('./lib/firebase');
       const userRef = doc(db, 'users', userDocId);
       await updateDoc(userRef, {
-        personal: increment(amount)
+        income: increment(amount)
       });
       await addDoc(collection(db, 'bonuses'), {
         userId: userDocId,
@@ -974,14 +974,15 @@ export default function App() {
         timestamp: serverTimestamp()
       });
     }
-    showNotification(`Gift code ${code} redeemed! +${amount} ETB added to personal balance.`, 'success');
+    showNotification(`Gift code ${code} redeemed! +${amount} ETB added to income balance.`, 'success');
   };
 
   const handleLuckyWheelReward = async (amount: number, spinCost: number) => {
-    // Update local state balance (subtract spin cost and add won amount)
+    // Update local state balance (subtract spin cost from personal, add won amount to income)
     setBalance(prev => ({ 
       ...prev, 
-      personal: Math.max(0, (prev.personal || 0) - spinCost + amount) 
+      personal: Math.max(0, (prev.personal || 0) - spinCost),
+      income: (prev.income || 0) + amount
     }));
 
     // Add to Firestore database
@@ -991,7 +992,8 @@ export default function App() {
       const { db } = await import('./lib/firebase');
       const userRef = doc(db, 'users', userDocId);
       await updateDoc(userRef, {
-        personal: increment(amount - spinCost)
+        personal: increment(-spinCost),
+        income: increment(amount)
       });
       if (amount > 0) {
         await addDoc(collection(db, 'bonuses'), {

@@ -975,7 +975,31 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
         })
       );
 
-      // 6. Fetch and delete all users except admin in parallel
+      // 6. Fetch and delete all bonuses in parallel
+      const bonusesSnap = await getDocs(collection(db, 'bonuses'));
+      await Promise.all(
+        bonusesSnap.docs.map(async (d) => {
+          try {
+            await deleteDoc(doc(db, 'bonuses', d.id));
+          } catch (e) {
+            console.warn("Could not delete bonus doc", d.id, e);
+          }
+        })
+      );
+
+      // 7. Fetch and delete all taskHistory in parallel
+      const taskHistorySnap = await getDocs(collection(db, 'taskHistory'));
+      await Promise.all(
+        taskHistorySnap.docs.map(async (d) => {
+          try {
+            await deleteDoc(doc(db, 'taskHistory', d.id));
+          } catch (e) {
+            console.warn("Could not delete taskHistory doc", d.id, e);
+          }
+        })
+      );
+
+      // 8. Fetch and delete all users except admin in parallel
       const usersSnap = await getDocs(collection(db, 'users'));
       let deletedCount = 0;
       await Promise.all(
@@ -1057,6 +1081,54 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
               await deleteDoc(doc(db, 'chats', d.id));
             } catch (e) {
               console.error("Error deleting chat:", d.id, e);
+            }
+          })
+        );
+
+        // 3a. Delete all commissions in parallel
+        const commissionsSnap = await getDocs(collection(db, 'commissions'));
+        await Promise.all(
+          commissionsSnap.docs.map(async (d) => {
+            try {
+              await deleteDoc(doc(db, 'commissions', d.id));
+            } catch (e) {
+              console.error("Error deleting commission:", d.id, e);
+            }
+          })
+        );
+
+        // 3b. Delete all salary payouts in parallel
+        const salarySnap = await getDocs(collection(db, 'salary_payouts'));
+        await Promise.all(
+          salarySnap.docs.map(async (d) => {
+            try {
+              await deleteDoc(doc(db, 'salary_payouts', d.id));
+            } catch (e) {
+              console.error("Error deleting salary payout:", d.id, e);
+            }
+          })
+        );
+
+        // 3c. Delete all bonuses in parallel
+        const bonusesSnap = await getDocs(collection(db, 'bonuses'));
+        await Promise.all(
+          bonusesSnap.docs.map(async (d) => {
+            try {
+              await deleteDoc(doc(db, 'bonuses', d.id));
+            } catch (e) {
+              console.error("Error deleting bonus:", d.id, e);
+            }
+          })
+        );
+
+        // 3d. Delete all taskHistory in parallel
+        const taskHistorySnap = await getDocs(collection(db, 'taskHistory'));
+        await Promise.all(
+          taskHistorySnap.docs.map(async (d) => {
+            try {
+              await deleteDoc(doc(db, 'taskHistory', d.id));
+            } catch (e) {
+              console.error("Error deleting taskHistory:", d.id, e);
             }
           })
         );
