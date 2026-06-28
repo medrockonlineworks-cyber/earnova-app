@@ -282,24 +282,7 @@ export function GiftBoxModal({ isOpen, onClose, onReward, t }: GiftBoxModalProps
                     </button>
                   </form>
 
-                  {/* Hint promo codes */}
-                  <div className="pt-2 border-t border-slate-100 text-center">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Available Codes for New Members:</p>
-                    <div className="flex flex-wrap justify-center gap-1.5">
-                      {Object.keys(VALID_CODES).map((c) => (
-                        <button
-                          key={c}
-                          onClick={() => {
-                            setCode(c);
-                            setError(null);
-                          }}
-                          className="px-2.5 py-1 bg-amber-50 border border-amber-100 hover:bg-amber-100 text-amber-700 font-black text-[9px] rounded-lg tracking-wider transition-colors"
-                        >
-                          {c}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+
                 </div>
               ) : (
                 <motion.div

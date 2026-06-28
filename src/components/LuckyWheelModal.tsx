@@ -105,7 +105,6 @@ export function ResultModal({ isOpen, onClose, amount }: ResultModalProps) {
 export function LuckyWheelModal({ isOpen, onClose, personalBalance, onReward, t }: LuckyWheelModalProps) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
-  const [hasFreeSpin, setHasFreeSpin] = useState(true);
   const [extraSpins, setExtraSpins] = useState(0);
   const [spinError, setSpinError] = useState<string | null>(null);
   const [wonAmount, setWonAmount] = useState<number | null>(null);
@@ -117,17 +116,9 @@ export function LuckyWheelModal({ isOpen, onClose, personalBalance, onReward, t 
   const [redeemSuccess, setRedeemSuccess] = useState<string | null>(null);
   const [redeemError, setRedeemError] = useState<string | null>(null);
 
-  // Sync daily free spin from local storage
+  // Reset states when opening
   useEffect(() => {
     if (isOpen) {
-      const lastSpin = localStorage.getItem('earnova_last_spin_date');
-      const today = new Date().toDateString();
-      if (lastSpin === today) {
-        setHasFreeSpin(false);
-      } else {
-        setHasFreeSpin(true);
-      }
-      // Reset won states when opening
       setRotation(0);
       setWonAmount(null);
       setShowRewardClaimed(false);
@@ -164,16 +155,13 @@ export function LuckyWheelModal({ isOpen, onClose, personalBalance, onReward, t 
     setWonAmount(null);
     setShowRewardClaimed(false);
 
-    const isFree = hasFreeSpin || extraSpins > 0;
-    const spinCost = isFree ? 0 : 20;
-
-    // Validate personal balance if not free spin
-    if (!isFree && personalBalance < 20) {
-      setSpinError('Insufficient balance. Each spin costs 20 ETB. Please recharge.');
+    if (extraSpins <= 0) {
+      setSpinError('Please enter a valid Promo Code to get a Free Spin!');
       return;
     }
 
     setIsSpinning(true);
+    const spinCost = 0; // Promotional spin cost is 0
 
     // Generate a random winning segment (0 to 17)
     const winningIndex = Math.floor(Math.random() * SEGMENTS.length);
@@ -201,18 +189,13 @@ export function LuckyWheelModal({ isOpen, onClose, personalBalance, onReward, t 
         setWonAmount(prizeAmount);
         setShowRewardClaimed(true);
 
-        if (hasFreeSpin) {
-          localStorage.setItem('earnova_last_spin_date', new Date().toDateString());
-          setHasFreeSpin(false);
-        } else if (extraSpins > 0) {
-          // Decrement extraSpins in Firestore
-          const userId = getUserDocId();
-          if (userId) {
-            const userRef = doc(db, 'users', userId);
-            await updateDoc(userRef, {
-              extraSpins: increment(-1)
-            });
-          }
+        // Decrement extraSpins in Firestore
+        const userId = getUserDocId();
+        if (userId) {
+          const userRef = doc(db, 'users', userId);
+          await updateDoc(userRef, {
+            extraSpins: increment(-1)
+          });
         }
       } catch (err) {
         setSpinError('Failed to claim reward. Please contact customer support.');
@@ -512,7 +495,7 @@ export function LuckyWheelModal({ isOpen, onClose, personalBalance, onReward, t 
                 >
                   <span className="text-[11px] font-black tracking-wider text-slate-950 uppercase leading-none drop-shadow-sm">SPIN</span>
                   <span className="text-[7px] font-bold text-slate-900 mt-0.5 uppercase tracking-tighter drop-shadow-sm">
-                    {hasFreeSpin ? 'FREE' : extraSpins > 0 ? 'FREE' : '20 ETB'}
+                    {extraSpins > 0 ? `${extraSpins} SPIN${extraSpins > 1 ? 'S' : ''}` : 'LOCKED'}
                   </span>
                 </button>
               </div>
@@ -544,7 +527,7 @@ export function LuckyWheelModal({ isOpen, onClose, personalBalance, onReward, t 
                 <div className="text-right">
                   <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Available Spins</p>
                   <p className="text-xs font-black text-yellow-400 uppercase">
-                    {hasFreeSpin ? 'Daily Free Spin' : extraSpins > 0 ? `${extraSpins} Extra Spin(s)` : '20 ETB / spin'}
+                    {extraSpins > 0 ? `${extraSpins} Spin(s)` : 'Locked (Use Code)'}
                   </p>
                 </div>
               </div>

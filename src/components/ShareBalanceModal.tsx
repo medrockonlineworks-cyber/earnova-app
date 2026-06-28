@@ -9,23 +9,26 @@ interface ShareBalanceModalProps {
   isOpen: boolean;
   onClose: () => void;
   personalBalance: number;
+  incomeBalance: number;
   currentUserPhone: string;
-  onShareSuccess: (amount: number, fee: number) => void;
+  onShareSuccess: (amount: number, fee: number, sourceWallet: 'personal' | 'income') => void;
   t: any;
 }
 
-export function ShareBalanceModal({ isOpen, onClose, personalBalance, currentUserPhone, onShareSuccess, t }: ShareBalanceModalProps) {
+export function ShareBalanceModal({ isOpen, onClose, personalBalance, incomeBalance, currentUserPhone, onShareSuccess, t }: ShareBalanceModalProps) {
   const [receiverPhone, setReceiverPhone] = useState('');
   const [amountStr, setAmountStr] = useState('');
+  const [sourceWallet, setSourceWallet] = useState<'personal' | 'income'>('personal');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [successData, setSuccessData] = useState<{ amount: number; fee: number; receiverName: string; receiverPhone: string } | null>(null);
+  const [successData, setSuccessData] = useState<{ amount: number; fee: number; receiverName: string; receiverPhone: string; sourceWallet: 'personal' | 'income' } | null>(null);
 
   // Clear inputs on open/close
   useEffect(() => {
     if (isOpen) {
       setReceiverPhone('');
       setAmountStr('');
+      setSourceWallet('personal');
       setError(null);
       setSuccessData(null);
     }
@@ -34,6 +37,7 @@ export function ShareBalanceModal({ isOpen, onClose, personalBalance, currentUse
   const amount = Number(amountStr) || 0;
   const fee = amount * 0.05;
   const totalDeducted = amount + fee;
+  const currentAvailableBalance = sourceWallet === 'personal' ? personalBalance : incomeBalance;
 
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,8 +54,8 @@ export function ShareBalanceModal({ isOpen, onClose, personalBalance, currentUse
       return;
     }
 
-    if (totalDeducted > personalBalance) {
-      setError(`Insufficient balance. You need ${totalDeducted.toFixed(2)} ETB (including 5% service fee) but you have ${personalBalance.toFixed(2)} ETB.`);
+    if (totalDeducted > currentAvailableBalance) {
+      setError(`Insufficient balance. You need ${totalDeducted.toFixed(2)} ETB (including 5% service fee) from your ${sourceWallet === 'personal' ? 'Personal' : 'Income'} Wallet, but you only have ${currentAvailableBalance.toFixed(2)} ETB.`);
       return;
     }
 
@@ -101,14 +105,14 @@ export function ShareBalanceModal({ isOpen, onClose, personalBalance, currentUse
       const senderRef = doc(db, 'users', senderDocId);
       const receiverRef = doc(db, 'users', receiverDocId);
 
-      // Deduct from sender's personal balance
+      // Deduct from sender's selected wallet
       await updateDoc(senderRef, {
-        personal: increment(-totalDeducted)
+        [sourceWallet]: increment(-totalDeducted)
       });
 
-      // Add to receiver's personal balance
+      // Add to receiver's income balance
       await updateDoc(receiverRef, {
-        personal: increment(amount)
+        income: increment(amount)
       });
 
       // 3. Add to bonuses collection for Sender (negative/outflow)
@@ -116,7 +120,7 @@ export function ShareBalanceModal({ isOpen, onClose, personalBalance, currentUse
         userId: senderDocId,
         amount: -totalDeducted,
         type: 'share_sent',
-        label: `Shared Balance with ${actualReceiverPhone} (5% fee)`,
+        label: `Shared Balance from ${sourceWallet === 'personal' ? 'Personal' : 'Income'} Wallet with ${actualReceiverPhone} (5% fee)`,
         timestamp: serverTimestamp()
       });
 
@@ -125,17 +129,18 @@ export function ShareBalanceModal({ isOpen, onClose, personalBalance, currentUse
         userId: receiverDocId,
         amount: amount,
         type: 'share_received',
-        label: `Received Balance from ${currentUserPhone}`,
+        label: `Received Balance into Income Wallet from ${currentUserPhone}`,
         timestamp: serverTimestamp()
       });
 
       // 5. Update local state
-      onShareSuccess(amount, fee);
+      onShareSuccess(amount, fee, sourceWallet);
       setSuccessData({
         amount,
         fee,
         receiverName,
-        receiverPhone: actualReceiverPhone
+        receiverPhone: actualReceiverPhone,
+        sourceWallet
       });
     } catch (err: any) {
       console.error('Error sharing balance:', err);
@@ -203,6 +208,14 @@ export function ShareBalanceModal({ isOpen, onClose, personalBalance, currentUse
                       <span className="text-xs font-mono font-bold text-gray-800">{successData.receiverPhone}</span>
                     </div>
                     <div className="flex justify-between items-center border-b border-gray-100 pb-2.5">
+                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Source Wallet</span>
+                      <span className="text-xs font-black text-indigo-600 capitalize">{successData.sourceWallet === 'personal' ? 'Personal Wallet' : 'Income Wallet'}</span>
+                    </div>
+                    <div className="flex justify-between items-center border-b border-gray-100 pb-2.5">
+                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Destination Wallet</span>
+                      <span className="text-xs font-black text-emerald-600">Income Wallet</span>
+                    </div>
+                    <div className="flex justify-between items-center border-b border-gray-100 pb-2.5">
                       <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Sent Amount</span>
                       <span className="text-xs font-black text-blue-600">ETB {successData.amount.toFixed(2)}</span>
                     </div>
@@ -226,11 +239,58 @@ export function ShareBalanceModal({ isOpen, onClose, personalBalance, currentUse
               ) : (
                 /* Input Form */
                 <form onSubmit={handleTransfer} className="space-y-4">
-                  {/* Personal Balance Display */}
-                  <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl p-5 text-white shadow-xl shadow-blue-500/15 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full blur-xl" />
-                    <p className="text-[8.5px] font-bold text-blue-100/80 uppercase tracking-widest">Your Available Balance</p>
-                    <p className="text-2xl font-black italic tracking-tighter mt-1">ETB {personalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  {/* Source Wallet Selection */}
+                  <div className="space-y-2 bg-slate-50 p-4 rounded-3xl border border-slate-100">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">
+                      Choose Source Wallet
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Personal Wallet Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSourceWallet('personal');
+                          setError(null);
+                        }}
+                        className={cn(
+                          "p-3 rounded-2xl border text-left transition-all flex flex-col justify-between relative overflow-hidden select-none",
+                          sourceWallet === 'personal'
+                            ? "bg-white border-blue-500 text-blue-900 shadow-sm ring-2 ring-blue-500/10"
+                            : "bg-gray-100/40 border-transparent text-gray-500 hover:bg-gray-100/80"
+                        )}
+                      >
+                        <span className="text-[8px] font-black uppercase tracking-wider">Personal</span>
+                        <span className="text-xs font-black mt-1 font-mono text-gray-800">
+                          {personalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB
+                        </span>
+                        {sourceWallet === 'personal' && (
+                          <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                        )}
+                      </button>
+
+                      {/* Income Wallet Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSourceWallet('income');
+                          setError(null);
+                        }}
+                        className={cn(
+                          "p-3 rounded-2xl border text-left transition-all flex flex-col justify-between relative overflow-hidden select-none",
+                          sourceWallet === 'income'
+                            ? "bg-white border-blue-500 text-blue-900 shadow-sm ring-2 ring-blue-500/10"
+                            : "bg-gray-100/40 border-transparent text-gray-500 hover:bg-gray-100/80"
+                        )}
+                      >
+                        <span className="text-[8px] font-black uppercase tracking-wider">Income</span>
+                        <span className="text-xs font-black mt-1 font-mono text-gray-800">
+                          {incomeBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB
+                        </span>
+                        {sourceWallet === 'income' && (
+                          <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   {error && (

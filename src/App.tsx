@@ -2100,12 +2100,22 @@ export default function App() {
               isOpen={showShareBalanceModal}
               onClose={() => setShowShareBalanceModal(false)}
               personalBalance={balance.personal}
+              incomeBalance={balance.income}
               currentUserPhone={userProfile?.phoneNumber || localStorage.getItem('earnova_logged_in_phone') || ''}
-              onShareSuccess={(amount, fee) => {
-                setBalance(prev => ({
-                  ...prev,
-                  personal: Math.max(0, (prev.personal || 0) - (amount + fee))
-                }));
+              onShareSuccess={(amount, fee, sourceWallet) => {
+                setBalance(prev => {
+                  if (sourceWallet === 'income') {
+                    return {
+                      ...prev,
+                      income: Math.max(0, (prev.income || 0) - (amount + fee))
+                    };
+                  } else {
+                    return {
+                      ...prev,
+                      personal: Math.max(0, (prev.personal || 0) - (amount + fee))
+                    };
+                  }
+                });
                 showNotification(`Successfully shared ETB ${amount.toFixed(2)} with receiver!`, 'success');
               }}
               t={t}

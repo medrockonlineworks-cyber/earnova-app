@@ -27,7 +27,8 @@ import {
   RefreshCw,
   TrendingUp,
   Gift,
-  Sparkles
+  Sparkles,
+  Copy
 } from 'lucide-react';
 import { db, auth, handleFirestoreError, OperationType, isUserAdmin, getUserDocId } from '../lib/firebase';
 import { 
@@ -128,6 +129,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
   const [newCodeMaxUsesPerUser, setNewCodeMaxUsesPerUser] = useState<string>('1');
   const [newCodeTargetUser, setNewCodeTargetUser] = useState('');
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isActivated || activeTab !== 'CODES') return;
@@ -2660,16 +2662,23 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                             <div className="space-y-1">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-mono text-sm font-black uppercase tracking-widest text-white">{item.code}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(item.code);
-                                    alert(`Copied "${item.code}" to clipboard!`);
-                                  }}
-                                  className="text-[8px] bg-white/5 hover:bg-white/10 px-1.5 py-0.5 rounded text-gray-400 hover:text-white uppercase font-bold"
-                                >
-                                  Copy
-                                </button>
+                                {copiedCodeId === item.id ? (
+                                  <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1">
+                                    <Check size={10} /> Copied!
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(item.code);
+                                      setCopiedCodeId(item.id);
+                                      setTimeout(() => setCopiedCodeId(null), 2000);
+                                    }}
+                                    className="text-[8px] bg-white/5 hover:bg-white/10 px-1.5 py-0.5 rounded text-amber-450 hover:text-amber-300 uppercase font-bold flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+                                  >
+                                    <Copy size={10} /> Copy
+                                  </button>
+                                )}
                                 {item.targetUser && (
                                   <span className="text-[8px] bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded text-red-400 uppercase font-black tracking-wider">
                                     Targeted: {item.targetUser}
