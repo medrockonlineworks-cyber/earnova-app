@@ -65,6 +65,7 @@ import { OnboardingTutorial } from './components/OnboardingTutorial';
 import { LoginPage } from './components/LoginPage';
 import { GiftBoxModal } from './components/GiftBoxModal';
 import { LuckyWheelModal } from './components/LuckyWheelModal';
+import { ShareBalanceModal } from './components/ShareBalanceModal';
 import { toPng } from 'html-to-image';
 import { TRANSLATIONS, Language } from './translations';
 import { auth, db, handleFirestoreError, OperationType, getUserDocId, isUserAdmin, logoutUser } from './lib/firebase';
@@ -405,6 +406,7 @@ export default function App() {
   const [showRechargeModal, setShowRechargeModal] = useState(false);
   const [showGiftBoxModal, setShowGiftBoxModal] = useState(false);
   const [showLuckyWheelModal, setShowLuckyWheelModal] = useState(false);
+  const [showShareBalanceModal, setShowShareBalanceModal] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -1016,6 +1018,10 @@ export default function App() {
     }
     if (action === 'LUCKY_WHEEL') {
       setShowLuckyWheelModal(true);
+      return;
+    }
+    if (action === 'SHARE_BALANCE') {
+      setShowShareBalanceModal(true);
       return;
     }
     if (action === 'Tutorial' || action === 'Take Onboarding Tour' || action === 'Onboarding tour' || action === 'Onboarding Tour') {
@@ -2087,6 +2093,25 @@ export default function App() {
             />
           </motion.div>
         )}
+
+        {showShareBalanceModal && (
+          <motion.div key="share-balance-modal-wrapper" className="contents">
+            <ShareBalanceModal 
+              isOpen={showShareBalanceModal}
+              onClose={() => setShowShareBalanceModal(false)}
+              personalBalance={balance.personal}
+              currentUserPhone={userProfile?.phoneNumber || localStorage.getItem('earnova_logged_in_phone') || ''}
+              onShareSuccess={(amount, fee) => {
+                setBalance(prev => ({
+                  ...prev,
+                  personal: Math.max(0, (prev.personal || 0) - (amount + fee))
+                }));
+                showNotification(`Successfully shared ETB ${amount.toFixed(2)} with receiver!`, 'success');
+              }}
+              t={t}
+            />
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );
@@ -2352,6 +2377,7 @@ function HomePage({ currentJobLevel, onJoinJob, handleAction, t, signedContracts
           { label: 'TELEGRAM', icon: MessageCircle, color: 'bg-sky-500', tKey: 'support_center' },
           { label: 'GIFT_BOX', icon: Gift, color: 'bg-rose-500', tKey: 'gift_box' },
           { label: 'LUCKY_WHEEL', icon: Disc, color: 'bg-amber-500', tKey: 'lucky_wheel' },
+          { label: 'SHARE_BALANCE', icon: Share2, color: 'bg-violet-600', tKey: 'share_balance' },
         ].map((action, idx) => (
           <button key={`quick-action-${action.label}-${idx}`} onClick={() => handleAction(action.label)} className="flex flex-col items-center gap-1.5 group">
             <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-lg transform transition-transform group-active:scale-95", action.color)}>
@@ -4178,7 +4204,7 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
                 setAssignedMissions([]);
                 WebApp.HapticFeedback.impactOccurred('medium');
               }}
-              className="px-3 py-1.5 text-[8.5px] font-black bg-slate-900 hover:bg-slate-800 text-white rounded-xl uppercase tracking-wider transition-all flex items-center gap-1 active:scale-95 shadow-md shadow-slate-900/10 border border-white/5"
+              className="px-3 py-1.5 text-[8.5px] font-black bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-xl uppercase tracking-wider transition-all flex items-center gap-1 active:scale-95 shadow-md shadow-blue-500/5 shrink-0"
               title="Reload task list to fetch newly uploaded videos"
             >
               <RefreshCw size={10} className="stroke-[2.5]" />
