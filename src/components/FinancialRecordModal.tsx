@@ -458,16 +458,16 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
                         if (currentJobLevel !== JobLevel.INTERN) {
                           const getLevelSignupBonus = (lvl: JobLevel): number => {
                             switch (lvl) {
-                              case JobLevel.JOB1: return 250;
-                              case JobLevel.JOB2: return 500;
-                              case JobLevel.JOB3: return 1000;
-                              case JobLevel.JOB4: return 1500;
-                              case JobLevel.JOB5: return 2000;
-                              case JobLevel.JOB6: return 2500;
-                              case JobLevel.JOB7: return 3000;
-                              case JobLevel.JOB8: return 3500;
-                              case JobLevel.JOB9: return 4000;
-                              case JobLevel.JOB10: return 4500;
+                              case JobLevel.JOB1: return 150;
+                              case JobLevel.JOB2: return 200;
+                              case JobLevel.JOB3: return 350;
+                              case JobLevel.JOB4: return 500;
+                              case JobLevel.JOB5: return 650;
+                              case JobLevel.JOB6: return 800;
+                              case JobLevel.JOB7: return 950;
+                              case JobLevel.JOB8: return 1100;
+                              case JobLevel.JOB9: return 1250;
+                              case JobLevel.JOB10: return 1400;
                               default: return 0;
                             }
                           };
