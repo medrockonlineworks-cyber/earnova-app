@@ -41,7 +41,9 @@ import {
   Loader2,
   RefreshCw,
   Info,
-  ExternalLink
+  ExternalLink,
+  Gift,
+  Disc
 } from 'lucide-react';
 import { JOBS, INVESTMENTS, JobLevel, UP_LEVEL_RULES, TASK_RULES, POSITION_RULES } from './constants';
 import { cn } from './lib/utils';
@@ -61,6 +63,8 @@ import { AboutUsModal } from './components/AboutUsModal';
 import { SigningModal } from './components/SigningModal';
 import { OnboardingTutorial } from './components/OnboardingTutorial';
 import { LoginPage } from './components/LoginPage';
+import { GiftBoxModal } from './components/GiftBoxModal';
+import { LuckyWheelModal } from './components/LuckyWheelModal';
 import { toPng } from 'html-to-image';
 import { TRANSLATIONS, Language } from './translations';
 import { auth, db, handleFirestoreError, OperationType, getUserDocId, isUserAdmin, logoutUser } from './lib/firebase';
@@ -399,6 +403,8 @@ export default function App() {
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [showRechargeModal, setShowRechargeModal] = useState(false);
+  const [showGiftBoxModal, setShowGiftBoxModal] = useState(false);
+  const [showLuckyWheelModal, setShowLuckyWheelModal] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -945,8 +951,57 @@ export default function App() {
     setTimeout(() => setNotification(null), 3000);
   };
 
+  const handleGiftReward = async (amount: number, code: string) => {
+    // Increment local state balance
+    setBalance(prev => ({ ...prev, personal: (prev.personal || 0) + amount }));
+
+    // Add to Firestore database
+    const userDocId = getUserDocId();
+    if (userDocId) {
+      const { doc, updateDoc, increment } = await import('firebase/firestore');
+      const { db } = await import('./lib/firebase');
+      const userRef = doc(db, 'users', userDocId);
+      await updateDoc(userRef, {
+        personal: increment(amount)
+      });
+    }
+    showNotification(`Gift code ${code} redeemed! +${amount} ETB added to personal balance.`, 'success');
+  };
+
+  const handleLuckyWheelReward = async (amount: number, spinCost: number) => {
+    // Update local state balance (subtract spin cost and add won amount)
+    setBalance(prev => ({ 
+      ...prev, 
+      personal: Math.max(0, (prev.personal || 0) - spinCost + amount) 
+    }));
+
+    // Add to Firestore database
+    const userDocId = getUserDocId();
+    if (userDocId) {
+      const { doc, updateDoc, increment } = await import('firebase/firestore');
+      const { db } = await import('./lib/firebase');
+      const userRef = doc(db, 'users', userDocId);
+      await updateDoc(userRef, {
+        personal: increment(amount - spinCost)
+      });
+    }
+    if (amount > 0) {
+      showNotification(`Won +${amount} ETB on Lucky Spin Wheel!`, 'success');
+    } else {
+      showNotification('Better luck next time!', 'info');
+    }
+  };
+
   const handleAction = (action: string) => {
     WebApp.HapticFeedback.impactOccurred('light');
+    if (action === 'GIFT_BOX') {
+      setShowGiftBoxModal(true);
+      return;
+    }
+    if (action === 'LUCKY_WHEEL') {
+      setShowLuckyWheelModal(true);
+      return;
+    }
     if (action === 'Tutorial' || action === 'Take Onboarding Tour' || action === 'Onboarding tour' || action === 'Onboarding Tour') {
       setShowOnboarding(true);
       return;
@@ -1993,6 +2048,29 @@ export default function App() {
             </motion.div>
           </motion.div>
         )}
+
+        {showGiftBoxModal && (
+          <motion.div key="gift-box-modal-wrapper" className="contents">
+            <GiftBoxModal 
+              isOpen={showGiftBoxModal}
+              onClose={() => setShowGiftBoxModal(false)}
+              onReward={handleGiftReward}
+              t={t}
+            />
+          </motion.div>
+        )}
+
+        {showLuckyWheelModal && (
+          <motion.div key="lucky-wheel-modal-wrapper" className="contents">
+            <LuckyWheelModal 
+              isOpen={showLuckyWheelModal}
+              onClose={() => setShowLuckyWheelModal(false)}
+              personalBalance={balance.personal}
+              onReward={handleLuckyWheelReward}
+              t={t}
+            />
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );
@@ -2256,10 +2334,12 @@ function HomePage({ currentJobLevel, onJoinJob, handleAction, t, signedContracts
           { label: 'WITHDRAW', icon: ArrowDownCircle, color: 'bg-indigo-500', tKey: 'btn_withdraw' },
           { label: 'TEAM', icon: Users, color: 'bg-emerald-500', tKey: 'income_team_size' },
           { label: 'TELEGRAM', icon: MessageCircle, color: 'bg-sky-500', tKey: 'support_center' },
+          { label: 'GIFT_BOX', icon: Gift, color: 'bg-rose-500', tKey: 'gift_box' },
+          { label: 'LUCKY_WHEEL', icon: Disc, color: 'bg-amber-500', tKey: 'lucky_wheel' },
         ].map((action, idx) => (
           <button key={`quick-action-${action.label}-${idx}`} onClick={() => handleAction(action.label)} className="flex flex-col items-center gap-1.5 group">
             <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-lg transform transition-transform group-active:scale-95", action.color)}>
-              <action.icon size={20} />
+              <action.icon size={20} className={cn(action.label === 'LUCKY_WHEEL' && "animate-spin-slow")} />
             </div>
             <span className="text-[9px] font-black text-gray-700 tracking-tight text-center leading-none uppercase">{action.tKey ? t(action.tKey as any) : action.label}</span>
           </button>
