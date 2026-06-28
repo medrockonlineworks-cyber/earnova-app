@@ -61,6 +61,7 @@ import { AboutUsModal } from './components/AboutUsModal';
 import { SigningModal } from './components/SigningModal';
 import { OnboardingTutorial } from './components/OnboardingTutorial';
 import { LoginPage } from './components/LoginPage';
+import { toPng } from 'html-to-image';
 import { TRANSLATIONS, Language } from './translations';
 import { auth, db, handleFirestoreError, OperationType, getUserDocId, isUserAdmin, logoutUser } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -1381,6 +1382,17 @@ export default function App() {
       return false;
     }
 
+    const isInternUser = currentJobLevel === JobLevel.INTERN || String(currentJobLevel).toUpperCase() === 'INTERN';
+    if (isInternUser && userProfile?.createdAt) {
+      const createdTime = new Date(userProfile.createdAt).getTime();
+      const oneDayMs = 24 * 60 * 60 * 1000;
+      if (Date.now() > createdTime + oneDayMs) {
+        WebApp.HapticFeedback.notificationOccurred('error');
+        alert("Your 1-day free intern trial period has expired. Please upgrade your level to continue working and earning.");
+        return false;
+      }
+    }
+
     const activeUserId = getUserDocId();
     if (activeUserId) {
       try {
@@ -1491,7 +1503,7 @@ export default function App() {
       case 'INCOME':
         return <IncomePage t={t} currentLang={currentLang} />;
       case 'TASK':
-        return <TaskPage currentLevel={currentJobLevel} onTaskAction={handleTaskAction} tasksClaimedToday={tasksClaimedToday} currentUser={auth.currentUser} t={t} currentLang={currentLang} onShowHistory={() => setShowTaskHistoryModal(true)} />;
+        return <TaskPage currentLevel={currentJobLevel} onTaskAction={handleTaskAction} tasksClaimedToday={tasksClaimedToday} currentUser={auth.currentUser} t={t} currentLang={currentLang} onShowHistory={() => setShowTaskHistoryModal(true)} createdAt={userProfile?.createdAt} />;
       case 'PROFILE':
         return (
           <ProfilePage 
@@ -2820,6 +2832,43 @@ function FundPage({ balance, investments = [], onInvest, handleAction, t }: { ba
 }
 
 function IncomePage({ t, currentLang }: { t: any, currentLang: Language }) {
+  const table1Ref = useRef<HTMLDivElement>(null);
+  const table2Ref = useRef<HTMLDivElement>(null);
+  const table3Ref = useRef<HTMLDivElement>(null);
+  const table4Ref = useRef<HTMLDivElement>(null);
+
+  const [downloadingTable, setDownloadingTable] = useState<string | null>(null);
+
+  const handleDownload = async (ref: React.RefObject<HTMLDivElement | null>, filename: string, tableName: string) => {
+    if (!ref.current) return;
+    setDownloadingTable(tableName);
+    try {
+      // Ensure element is visible and fully sized before capture
+      const dataUrl = await toPng(ref.current, {
+        backgroundColor: '#ffffff',
+        style: {
+          transform: 'scale(1)',
+          borderRadius: '12px',
+          padding: '20px',
+          margin: '0',
+          display: 'block',
+        },
+        width: Math.max(ref.current.scrollWidth + 40, 600), // Ensure robust width
+        height: ref.current.scrollHeight + 40,
+      });
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = dataUrl;
+      link.click();
+      WebApp.HapticFeedback.notificationOccurred('success');
+    } catch (err) {
+      console.error('Failed to download table image', err);
+      alert('Could not generate image. Please try again.');
+    } finally {
+      setDownloadingTable(null);
+    }
+  };
+
   const renderJobDesc = (job: any) => {
     if (job.level === JobLevel.INTERN) {
       return t('income_intern_desc');
@@ -2845,40 +2894,50 @@ function IncomePage({ t, currentLang }: { t: any, currentLang: Language }) {
       <div className="px-3 space-y-10">
         {/* Table of Level Income Rules */}
         <div className="space-y-4">
-          <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-2 px-6 text-center shadow-sm">
-            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">{t('income_title')}</h2>
+          <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-3 px-6 flex flex-col sm:flex-row items-center justify-between gap-2 shadow-sm">
+            <h2 className="text-base sm:text-lg font-black text-slate-800 uppercase tracking-tight">{t('income_title')}</h2>
+            <button 
+              onClick={() => handleDownload(table1Ref, 'earnlink-level-income.png', 'LEVEL_INCOME')}
+              disabled={downloadingTable !== null}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+            >
+              <Download size={12} className={downloadingTable === 'LEVEL_INCOME' ? "animate-bounce" : ""} />
+              {downloadingTable === 'LEVEL_INCOME' ? 'Saving...' : 'Save as Image'}
+            </button>
           </div>
           
-          <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-center border-collapse min-w-max">
-              <thead>
-                <tr className="bg-slate-400 text-white text-[9px] uppercase font-black tracking-widest whitespace-nowrap">
-                  <th className="p-2 border border-slate-300">{t('profile_level')}</th>
-                  <th className="p-2 border border-slate-300">{t('balance_work')}</th>
-                  <th className="p-2 border border-slate-300">{t('daily_tasks')}</th>
-                  <th className="p-2 border border-slate-300">{t('each_order')}</th>
-                  <th className="p-2 border border-slate-300">{t('income_daily')}</th>
-                  <th className="p-2 border border-slate-300">{t('income_30day')}</th>
-                  <th className="p-2 border border-slate-300">{t('income_360day')}</th>
-                </tr>
-              </thead>
-              <tbody className="text-[10px] font-black text-slate-700">
-                {JOBS.map((job) => {
-                  const daily = job.dailyTasks * job.eachOrder;
-                  return (
-                    <tr key={`income-job-row-${job.id}`} className="even:bg-slate-50 whitespace-nowrap">
-                      <td className="p-2 border border-slate-200 uppercase">{job.level === JobLevel.INTERN ? t('job_intern') : job.level}</td>
-                      <td className="p-2 border border-slate-200">{job.deposit.toLocaleString()}</td>
-                      <td className="p-2 border border-slate-200">{job.dailyTasks}</td>
-                      <td className="p-2 border border-slate-200">{job.eachOrder}</td>
-                      <td className="p-2 border border-slate-200 font-bold text-slate-900">{daily.toLocaleString()}</td>
-                      <td className="p-2 border border-slate-200">{job.level === JobLevel.INTERN ? '-' : (daily * 30).toLocaleString()}</td>
-                      <td className="p-2 border border-slate-200">{job.level === JobLevel.INTERN ? '-' : (daily * 360).toLocaleString()}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div ref={table1Ref} className="bg-white p-2 rounded-xl">
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-center border-collapse min-w-max bg-white">
+                <thead>
+                  <tr className="bg-slate-400 text-white text-[9px] uppercase font-black tracking-widest whitespace-nowrap">
+                    <th className="p-2 border border-slate-300">{t('profile_level')}</th>
+                    <th className="p-2 border border-slate-300">{t('balance_work')}</th>
+                    <th className="p-2 border border-slate-300">{t('daily_tasks')}</th>
+                    <th className="p-2 border border-slate-300">{t('each_order')}</th>
+                    <th className="p-2 border border-slate-300">{t('income_daily')}</th>
+                    <th className="p-2 border border-slate-300">{t('income_30day')}</th>
+                    <th className="p-2 border border-slate-300">{t('income_360day')}</th>
+                  </tr>
+                </thead>
+                <tbody className="text-[10px] font-black text-slate-700 bg-white">
+                  {JOBS.map((job) => {
+                    const daily = job.dailyTasks * job.eachOrder;
+                    return (
+                      <tr key={`income-job-row-${job.id}`} className="even:bg-slate-50 whitespace-nowrap">
+                        <td className="p-2 border border-slate-200 uppercase">{job.level === JobLevel.INTERN ? t('job_intern') : job.level}</td>
+                        <td className="p-2 border border-slate-200">{job.deposit.toLocaleString()}</td>
+                        <td className="p-2 border border-slate-200">{job.dailyTasks}</td>
+                        <td className="p-2 border border-slate-200">{job.eachOrder}</td>
+                        <td className="p-2 border border-slate-200 font-bold text-slate-900">{daily.toLocaleString()}</td>
+                        <td className="p-2 border border-slate-200">{job.level === JobLevel.INTERN ? '-' : (daily * 30).toLocaleString()}</td>
+                        <td className="p-2 border border-slate-200">{job.level === JobLevel.INTERN ? '-' : (daily * 360).toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -2896,32 +2955,43 @@ function IncomePage({ t, currentLang }: { t: any, currentLang: Language }) {
 
         {/* Upgrade Level Rules */}
         <div className="space-y-4">
-          <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-2 px-6 text-center shadow-sm">
-            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">{t('income_up_rules')}</h2>
+          <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-3 px-6 flex flex-col sm:flex-row items-center justify-between gap-2 shadow-sm">
+            <h2 className="text-base sm:text-lg font-black text-slate-800 uppercase tracking-tight">{t('income_up_rules')}</h2>
+            <button 
+              onClick={() => handleDownload(table2Ref, 'earnlink-upgrade-rules.png', 'UPGRADE_RULES')}
+              disabled={downloadingTable !== null}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+            >
+              <Download size={12} className={downloadingTable === 'UPGRADE_RULES' ? "animate-bounce" : ""} />
+              {downloadingTable === 'UPGRADE_RULES' ? 'Saving...' : 'Save as Image'}
+            </button>
           </div>
-          <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-center border-collapse min-w-max">
-              <thead>
-                <tr className="bg-slate-400 text-white text-[9px] uppercase font-black tracking-widest whitespace-nowrap">
-                  <th className="p-2 border border-slate-300">{t('income_up_level')}</th>
-                  <th className="p-2 border border-slate-300">{t('income_team_commission')}</th>
-                  <th className="p-2 border border-slate-300">{t('income_level1')}</th>
-                  <th className="p-2 border border-slate-300">{t('income_level2')}</th>
-                  <th className="p-2 border border-slate-300">{t('income_level3')}</th>
-                </tr>
-              </thead>
-              <tbody className="text-[10px] font-black text-slate-700">
-                {UP_LEVEL_RULES.map((rule) => (
-                  <tr key={`up-level-rule-${rule.level}`} className="even:bg-slate-50 whitespace-nowrap">
-                    <td className="p-2 border border-slate-200">{rule.level}</td>
-                    <td className="p-2 border border-slate-200">{rule.ratio}</td>
-                    <td className="p-2 border border-slate-200">{rule.level1.toLocaleString()}</td>
-                    <td className="p-2 border border-slate-200">{rule.level2.toLocaleString()}</td>
-                    <td className="p-2 border border-slate-200">{rule.level3.toLocaleString()}</td>
+          
+          <div ref={table2Ref} className="bg-white p-2 rounded-xl">
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-center border-collapse min-w-max bg-white">
+                <thead>
+                  <tr className="bg-slate-400 text-white text-[9px] uppercase font-black tracking-widest whitespace-nowrap">
+                    <th className="p-2 border border-slate-300">{t('income_up_level')}</th>
+                    <th className="p-2 border border-slate-300">{t('income_team_commission')}</th>
+                    <th className="p-2 border border-slate-300">{t('income_level1')}</th>
+                    <th className="p-2 border border-slate-300">{t('income_level2')}</th>
+                    <th className="p-2 border border-slate-300">{t('income_level3')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="text-[10px] font-black text-slate-700 bg-white">
+                  {UP_LEVEL_RULES.map((rule) => (
+                    <tr key={`up-level-rule-${rule.level}`} className="even:bg-slate-50 whitespace-nowrap">
+                      <td className="p-2 border border-slate-200">{rule.level}</td>
+                      <td className="p-2 border border-slate-200">{rule.ratio}</td>
+                      <td className="p-2 border border-slate-200">{rule.level1.toLocaleString()}</td>
+                      <td className="p-2 border border-slate-200">{rule.level2.toLocaleString()}</td>
+                      <td className="p-2 border border-slate-200">{rule.level3.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -2946,32 +3016,43 @@ function IncomePage({ t, currentLang }: { t: any, currentLang: Language }) {
 
         {/* Table of Task Rules */}
         <div className="space-y-4">
-          <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-2 px-6 text-center shadow-sm">
-            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">{t('income_task_rules')}</h2>
+          <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-3 px-6 flex flex-col sm:flex-row items-center justify-between gap-2 shadow-sm">
+            <h2 className="text-base sm:text-lg font-black text-slate-800 uppercase tracking-tight">{t('income_task_rules')}</h2>
+            <button 
+              onClick={() => handleDownload(table3Ref, 'earnlink-task-rules.png', 'TASK_RULES')}
+              disabled={downloadingTable !== null}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+            >
+              <Download size={12} className={downloadingTable === 'TASK_RULES' ? "animate-bounce" : ""} />
+              {downloadingTable === 'TASK_RULES' ? 'Saving...' : 'Save as Image'}
+            </button>
           </div>
-          <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-center border-collapse min-w-max">
-              <thead>
-                <tr className="bg-slate-400 text-white text-[9px] uppercase font-black tracking-widest whitespace-nowrap">
-                  <th className="p-2 border border-slate-300">{t('profile_level')}</th>
-                  <th className="p-2 border border-slate-300">{t('income_team_commission')}</th>
-                  <th className="p-2 border border-slate-300">{t('income_level1')}</th>
-                  <th className="p-2 border border-slate-300">{t('income_level2')}</th>
-                  <th className="p-2 border border-slate-300">{t('income_level3')}</th>
-                </tr>
-              </thead>
-              <tbody className="text-[10px] font-black text-slate-700">
-                {TASK_RULES.map((rule) => (
-                  <tr key={`task-rule-${rule.level}`} className="even:bg-slate-50 whitespace-nowrap">
-                    <td className="p-2 border border-slate-200">{rule.level}</td>
-                    <td className="p-2 border border-slate-200">{rule.ratio}</td>
-                    <td className="p-2 border border-slate-200">{rule.level1.toLocaleString()}</td>
-                    <td className="p-2 border border-slate-200">{rule.level2.toLocaleString()}</td>
-                    <td className="p-2 border border-slate-200">{rule.level3.toLocaleString()}</td>
+          
+          <div ref={table3Ref} className="bg-white p-2 rounded-xl">
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-center border-collapse min-w-max bg-white">
+                <thead>
+                  <tr className="bg-slate-400 text-white text-[9px] uppercase font-black tracking-widest whitespace-nowrap">
+                    <th className="p-2 border border-slate-300">{t('profile_level')}</th>
+                    <th className="p-2 border border-slate-300">{t('income_team_commission')}</th>
+                    <th className="p-2 border border-slate-300">{t('income_level1')}</th>
+                    <th className="p-2 border border-slate-300">{t('income_level2')}</th>
+                    <th className="p-2 border border-slate-300">{t('income_level3')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="text-[10px] font-black text-slate-700 bg-white">
+                  {TASK_RULES.map((rule) => (
+                    <tr key={`task-rule-${rule.level}`} className="even:bg-slate-50 whitespace-nowrap">
+                      <td className="p-2 border border-slate-200">{rule.level}</td>
+                      <td className="p-2 border border-slate-200">{rule.ratio}</td>
+                      <td className="p-2 border border-slate-200">{rule.level1.toLocaleString()}</td>
+                      <td className="p-2 border border-slate-200">{rule.level2.toLocaleString()}</td>
+                      <td className="p-2 border border-slate-200">{rule.level3.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -2991,46 +3072,57 @@ function IncomePage({ t, currentLang }: { t: any, currentLang: Language }) {
 
         {/* Table of Position Rules */}
         <div className="space-y-4">
-          <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-2 px-6 text-center shadow-sm">
-            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">{t('income_pos_rules')}</h2>
+          <div className="bg-blue-50/50 border border-blue-100 rounded-2xl py-3 px-6 flex flex-col sm:flex-row items-center justify-between gap-2 shadow-sm">
+            <h2 className="text-base sm:text-lg font-black text-slate-800 uppercase tracking-tight">{t('income_pos_rules')}</h2>
+            <button 
+              onClick={() => handleDownload(table4Ref, 'earnlink-position-rules.png', 'POSITION_RULES')}
+              disabled={downloadingTable !== null}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+            >
+              <Download size={12} className={downloadingTable === 'POSITION_RULES' ? "animate-bounce" : ""} />
+              {downloadingTable === 'POSITION_RULES' ? 'Saving...' : 'Save as Image'}
+            </button>
           </div>
-          <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-center border-collapse min-w-max">
-              <thead>
-                <tr className="bg-slate-400 text-white text-[9px] uppercase font-black tracking-widest whitespace-nowrap">
-                  <th className="p-2 border border-slate-300 text-left">{t('income_pos_title')}</th>
-                  <th className="p-2 border border-slate-300">{t('income_team_size')}</th>
-                  <th className="p-2 border border-slate-300">{t('income_monthly_salary')}</th>
-                </tr>
-              </thead>
-              <tbody className="text-[10px] font-black text-slate-700 whitespace-nowrap">
-                {POSITION_RULES.map((rule) => {
-                  const posKey = rule.position === 'Internship Assistant' ? 'pos_intern_assistant' :
-                               rule.position === 'Official Assistant' ? 'pos_official_assistant' :
-                               rule.position === 'Formal Supervisor' ? 'pos_formal_supervisor' :
-                               rule.position === 'Marketing Manager' ? 'pos_marketing_manager' :
-                               rule.position === 'Regional Manager' ? 'pos_regional_manager' :
-                               rule.position === 'Marketing Director' ? 'pos_marketing_director' :
-                               rule.position === 'Company Partner' ? 'pos_company_partner' : null;
+          
+          <div ref={table4Ref} className="bg-white p-2 rounded-xl">
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-center border-collapse min-w-max bg-white">
+                <thead>
+                  <tr className="bg-slate-400 text-white text-[9px] uppercase font-black tracking-widest whitespace-nowrap">
+                    <th className="p-2 border border-slate-300 text-left">{t('income_pos_title')}</th>
+                    <th className="p-2 border border-slate-300">{t('income_team_size')}</th>
+                    <th className="p-2 border border-slate-300">{t('income_monthly_salary')}</th>
+                  </tr>
+                </thead>
+                <tbody className="text-[10px] font-black text-slate-700 whitespace-nowrap bg-white">
+                  {POSITION_RULES.map((rule) => {
+                    const posKey = rule.position === 'Internship Assistant' ? 'pos_intern_assistant' :
+                                 rule.position === 'Official Assistant' ? 'pos_official_assistant' :
+                                 rule.position === 'Formal Supervisor' ? 'pos_formal_supervisor' :
+                                 rule.position === 'Marketing Manager' ? 'pos_marketing_manager' :
+                                 rule.position === 'Regional Manager' ? 'pos_regional_manager' :
+                                 rule.position === 'Marketing Director' ? 'pos_marketing_director' :
+                                 rule.position === 'Company Partner' ? 'pos_company_partner' : null;
 
-                  const sizeKey = rule.teamSize === '15 direct reports' ? 'team_15_direct' :
-                                rule.teamSize === '25 direct reports' ? 'team_25_direct' :
-                                rule.teamSize === '25-150-person team' ? 'team_150_team' :
-                                rule.teamSize === '25-500-person team' ? 'team_500_team' :
-                                rule.teamSize === '25-1500-person team' ? 'team_1500_team' :
-                                rule.teamSize === '25-3500-person team' ? 'team_3500_team' :
-                                rule.teamSize === '25-7000-person team' ? 'team_7000_team' : null;
+                    const sizeKey = rule.teamSize === '15 direct reports' ? 'team_15_direct' :
+                                  rule.teamSize === '25 direct reports' ? 'team_25_direct' :
+                                  rule.teamSize === '25-150-person team' ? 'team_150_team' :
+                                  rule.teamSize === '25-500-person team' ? 'team_500_team' :
+                                  rule.teamSize === '25-1500-person team' ? 'team_1500_team' :
+                                  rule.teamSize === '25-3500-person team' ? 'team_3500_team' :
+                                  rule.teamSize === '25-7000-person team' ? 'team_7000_team' : null;
 
-                  return (
-                    <tr key={`pos-rule-row-${rule.position}`} className="even:bg-slate-50">
-                      <td className="p-2 border border-slate-200 text-left">{posKey ? t(posKey as any) : rule.position}</td>
-                      <td className="p-2 border border-slate-200">{sizeKey ? t(sizeKey as any) : rule.teamSize}</td>
-                      <td className="p-2 border border-slate-200 font-black text-slate-900">{rule.monthlySalary.toLocaleString()}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                    return (
+                      <tr key={`pos-rule-row-${rule.position}`} className="even:bg-slate-50">
+                        <td className="p-2 border border-slate-200 text-left">{posKey ? t(posKey as any) : rule.position}</td>
+                        <td className="p-2 border border-slate-200">{sizeKey ? t(sizeKey as any) : rule.teamSize}</td>
+                        <td className="p-2 border border-slate-200 font-black text-slate-900">{rule.monthlySalary.toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -3041,7 +3133,7 @@ function IncomePage({ t, currentLang }: { t: any, currentLang: Language }) {
                          rule.position === 'Official Assistant' ? 'pos_official_assistant' :
                          rule.position === 'Formal Supervisor' ? 'pos_formal_supervisor' :
                          rule.position === 'Marketing Manager' ? 'pos_marketing_manager' :
-                         rule.position === 'Regional Manager' ? 'pos_regional_manager' :
+                         rule.position === 'Regional Manager' ? 'pos_regional_desc' :
                          rule.position === 'Marketing Director' ? 'pos_marketing_director' :
                          rule.position === 'Company Partner' ? 'pos_company_partner' : null;
             const posName = posKey ? t(posKey as any) : rule.position;
@@ -3213,7 +3305,10 @@ let globalTasksLastFetchedAt = 0;
 const globalCompletedTaskIdsCache: Record<string, string[]> = {};
 const globalCompletedLastFetchedAt: Record<string, number> = {};
 
-function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, t, currentLang = 'EN', onShowHistory }: { currentLevel: JobLevel, onTaskAction: (t: string, c: number, taskId?: string) => Promise<boolean>, tasksClaimedToday: number, currentUser: any, t: any, currentLang?: string, onShowHistory: () => void }) {
+function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, t, currentLang = 'EN', onShowHistory, createdAt }: { currentLevel: JobLevel, onTaskAction: (t: string, c: number, taskId?: string) => Promise<boolean>, tasksClaimedToday: number, currentUser: any, t: any, currentLang?: string, onShowHistory: () => void, createdAt?: string }) {
+  const isInternUser = currentLevel === JobLevel.INTERN || String(currentLevel).toUpperCase() === 'INTERN';
+  const isTrialExpired = isInternUser && createdAt && (Date.now() > new Date(createdAt).getTime() + 24 * 60 * 60 * 1000);
+
   const job = JOBS.find(j => j.level === currentLevel) || JOBS[0];
   const taskCount = job.dailyTasks;
   const commission = job.eachOrder;
@@ -3730,6 +3825,32 @@ function TaskPage({ currentLevel, onTaskAction, tasksClaimedToday, currentUser, 
       }
     } catch (err) {}
     return '';
+  }
+
+  if (isTrialExpired) {
+    return (
+      <div className="px-6 py-12 flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6">
+        <motion.div 
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="w-24 h-24 bg-rose-100 rounded-full flex items-center justify-center text-rose-600 mb-2"
+        >
+          <Lock size={48} className="stroke-[2.5]" />
+        </motion.div>
+        
+        <div className="space-y-2">
+          <h2 className="text-2xl font-black italic text-gray-900 uppercase tracking-tighter">Trial Period Expired</h2>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest max-w-[280px] mx-auto leading-relaxed">
+            Your 1-day free intern trial period has expired. Please upgrade your level to continue working and earning.
+          </p>
+        </div>
+
+        <div className="bg-[#0A0F1E] border border-white/10 px-6 py-4 rounded-3xl w-full max-w-xs text-center">
+          <p className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em] mb-1">Contract Status</p>
+          <p className="text-sm font-black text-white">Trial Expired</p>
+        </div>
+      </div>
+    );
   }
 
   // If daily limit already reached
@@ -4544,11 +4665,12 @@ function ProfilePage({
     day: 'numeric'
   }) : 'Jun 28, 2026';
 
-  const endContractDateStr = createdAt ? new Date(new Date(createdAt).getTime() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, {
+  const isInternUser = currentJobLevel === JobLevel.INTERN || String(currentJobLevel).toUpperCase() === 'INTERN';
+  const endContractDateStr = createdAt ? new Date(new Date(createdAt).getTime() + (isInternUser ? 1 : 365) * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric'
-  }) : 'Jun 28, 2027';
+  }) : (isInternUser ? 'Jun 29, 2026' : 'Jun 28, 2027');
 
   let totalCommissionsEarned = 0;
   historyItems.forEach((item) => {
