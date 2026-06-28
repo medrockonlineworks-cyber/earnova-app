@@ -16,8 +16,7 @@ import {
 import { auth, db } from '../lib/firebase';
 import { 
   signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signInAnonymously
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import WebApp from '@twa-dev/sdk';
@@ -199,15 +198,6 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
     WebApp.HapticFeedback.impactOccurred('medium');
 
     try {
-      // Always ensure we have an anonymous Firebase session for database rule compliance if allowed
-      if (!auth.currentUser) {
-        try {
-          await signInAnonymously(auth);
-        } catch (anonErr) {
-          console.warn("Silent anonymous sign in failed in LoginPage, continuing via phone profile lookup:", anonErr);
-        }
-      }
-
       let userData: any = null;
       let usingLocalFallback = false;
       let resolvedPhone = cleanPhone;
@@ -468,40 +458,6 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || 'Authentication failed. Please try again.');
-      WebApp.HapticFeedback.notificationOccurred('error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-
-  const handleGuestAccess = async () => {
-    setIsLoading(true);
-    setErrorMsg(null);
-    WebApp.HapticFeedback.impactOccurred('light');
-
-    try {
-      try {
-        await signInAnonymously(auth);
-      } catch (anonErr) {
-        console.warn("Silent anonymous guest sign in failed, continuing locally:", anonErr);
-      }
-      
-      // Store a custom guest login phone so the app can continue
-      const guestPhone = 'guest_' + Math.random().toString(36).substring(2, 10);
-      localStorage.setItem('earnova_logged_in_phone', guestPhone);
-      
-      WebApp.HapticFeedback.notificationOccurred('success');
-      setIsSuccess(true);
-      
-      setTimeout(() => {
-        if (onLoginSuccess) {
-          onLoginSuccess();
-        }
-      }, 1500);
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg('Failed to start guest session.');
       WebApp.HapticFeedback.notificationOccurred('error');
     } finally {
       setIsLoading(false);

@@ -63,7 +63,7 @@ import { OnboardingTutorial } from './components/OnboardingTutorial';
 import { LoginPage } from './components/LoginPage';
 import { TRANSLATIONS, Language } from './translations';
 import { auth, db, handleFirestoreError, OperationType, getUserDocId, isUserAdmin, logoutUser } from './lib/firebase';
-import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { doc, onSnapshot, getDoc, setDoc, collection, query, where } from 'firebase/firestore';
 
 type Page = 'HOME' | 'FUND' | 'INCOME' | 'TASK' | 'PROFILE';
@@ -685,10 +685,8 @@ export default function App() {
       }
 
       if (!user) {
-        console.log('No Firebase user session, attempting silent anonymous connection token...');
-        signInAnonymously(auth).catch((authErr) => {
-          console.warn("Silent anonymous sign in failed in App.tsx (restricted by configuration):", authErr.message);
-        });
+        console.log('No active Firebase user session');
+        setCurrentUser(null);
         return;
       }
 
@@ -714,6 +712,35 @@ export default function App() {
     return () => {
       unsubAuth();
     };
+  }, []);
+
+  // Programmatically clean up anonymous guest users if the active user is an admin
+  useEffect(() => {
+    if (isUserAdmin()) {
+      const cleanAnonymousGuests = async () => {
+        try {
+          const { collection, getDocs, deleteDoc, doc } = await import('firebase/firestore');
+          const usersSnap = await getDocs(collection(db, 'users'));
+          usersSnap.docs.forEach(async (d) => {
+            const data = d.data();
+            const isGuest = d.id.startsWith('guest_') || (data.phoneNumber || '').startsWith('guest_');
+            if (isGuest) {
+              try {
+                await deleteDoc(doc(db, 'users', d.id));
+                console.log(`Successfully cleaned up anonymous guest user: ${d.id}`);
+              } catch (e) {
+                console.warn(`Error cleaning up anonymous guest user ${d.id}:`, e);
+              }
+            }
+          });
+        } catch (err) {
+          console.warn("Silent admin cleanup of guests failed:", err);
+        }
+      };
+      // Delay slightly to prioritize core UI load
+      const timeout = setTimeout(cleanAnonymousGuests, 3000);
+      return () => clearTimeout(timeout);
+    }
   }, []);
 
   useEffect(() => {
@@ -764,20 +791,23 @@ export default function App() {
       }
 
       const userRef = doc(db, 'users', userDocId);
-      getDoc(userRef).then((snap) => {
-        if (!snap.exists()) {
-          setDoc(userRef, {
-            personal: 0.00, // Onboarding welcome bonus claimed via tutorial screen
-            income: 0.00,
-            workDeposit: 0.00,
-            status: 'active',
-            currentLevel: JobLevel.INTERN,
-            phoneNumber: userDocId
-          }, { merge: true });
-        }
-      }).catch((docErr) => {
-        console.warn("User document default init issue (ignored):", docErr);
-      });
+      const isGuestUser = userDocId.startsWith('guest_');
+      if (!isGuestUser) {
+        getDoc(userRef).then((snap) => {
+          if (!snap.exists()) {
+            setDoc(userRef, {
+              personal: 0.00, // Onboarding welcome bonus claimed via tutorial screen
+              income: 0.00,
+              workDeposit: 0.00,
+              status: 'active',
+              currentLevel: JobLevel.INTERN,
+              phoneNumber: userDocId
+            }, { merge: true });
+          }
+        }).catch((docErr) => {
+          console.warn("User document default init issue (ignored):", docErr);
+        });
+      }
 
       unsubUser = onSnapshot(userRef, (docSnap) => {
         if (docSnap.exists()) {

@@ -54,7 +54,8 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
         const level1Users: any[] = [];
         q1Snap.forEach(snap => {
           const data = snap.data();
-          if (data.status !== 'inactive') {
+          const isGuest = snap.id.startsWith('guest_') || (data.phoneNumber || '').startsWith('guest_');
+          if (data.status !== 'inactive' && !isGuest) {
             level1Users.push({ id: snap.id, ...data });
           }
         });
@@ -92,7 +93,8 @@ export function TeamModal({ onClose, onInvite, t }: TeamModalProps) {
           snaps.forEach(snapCol => {
             snapCol.forEach(snap => {
               const data = snap.data();
-              if (data.status !== 'inactive') {
+              const isGuest = snap.id.startsWith('guest_') || (data.phoneNumber || '').startsWith('guest_');
+              if (data.status !== 'inactive' && !isGuest) {
                 results.push({ id: snap.id, ...data });
               }
             });

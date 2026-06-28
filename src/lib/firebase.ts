@@ -75,13 +75,7 @@ export function getUserDocId(): string {
   if (auth.currentUser) {
     return auth.currentUser.uid;
   }
-  // Persistent guest UID for seamless sandbox testing so user is never blocked
-  let guestId = localStorage.getItem('earnova_guest_uid');
-  if (!guestId) {
-    guestId = 'guest_' + Math.random().toString(36).substring(2, 10);
-    localStorage.setItem('earnova_guest_uid', guestId);
-  }
-  return guestId;
+  return '';
 }
 
 export function isUserAdmin(): boolean {

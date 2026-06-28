@@ -279,7 +279,26 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
       // 3. Fetch all registered users
       const qUsers = query(collection(db, 'users'));
       const usersSnap = await getDocs(qUsers);
-      setUsers(usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const allFetchedUsers = usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // Filter out any anonymous guest user from the display lists
+      const filteredRealUsers = allFetchedUsers.filter((u: any) => !u.id.startsWith('guest_') && !(u.phoneNumber || '').startsWith('guest_'));
+      setUsers(filteredRealUsers);
+
+      // Identify anonymous guest users and delete them from Firestore silently to clean up the DB
+      const anonymousGuestUsers = allFetchedUsers.filter((u: any) => u.id.startsWith('guest_') || (u.phoneNumber || '').startsWith('guest_'));
+      if (anonymousGuestUsers.length > 0) {
+        const { deleteDoc, doc } = await import('firebase/firestore');
+        Promise.all(
+          anonymousGuestUsers.map(async (u) => {
+            try {
+              await deleteDoc(doc(db, 'users', u.id));
+            } catch (err) {
+              console.warn(`Failed to silent-delete anonymous guest user ${u.id}:`, err);
+            }
+          })
+        );
+      }
 
       // 4. Fetch all chats
       const qChats = query(collection(db, 'chats'), orderBy('lastUpdated', 'desc'));
