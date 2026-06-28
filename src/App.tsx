@@ -2842,10 +2842,33 @@ function IncomePage({ t, currentLang }: { t: any, currentLang: Language }) {
   const handleDownload = async (ref: React.RefObject<HTMLDivElement | null>, filename: string, tableName: string) => {
     if (!ref.current) return;
     setDownloadingTable(tableName);
+    
+    // Find scroll and table elements to calculate and allow full rendering
+    const scrollContainer = ref.current.querySelector('.overflow-x-auto') as HTMLDivElement | null;
+    const tableElement = ref.current.querySelector('table') as HTMLTableElement | null;
+    
+    const originalRefStyle = ref.current.getAttribute('style') || '';
+    const originalScrollStyle = scrollContainer ? scrollContainer.getAttribute('style') || '' : '';
+    
     try {
+      const fullWidth = tableElement ? tableElement.scrollWidth + 40 : 800;
+      const fullHeight = ref.current.scrollHeight + 40;
+
+      if (scrollContainer) {
+        scrollContainer.style.overflowX = 'visible';
+        scrollContainer.style.width = 'auto';
+        scrollContainer.style.maxWidth = 'none';
+      }
+      
+      ref.current.style.width = `${fullWidth}px`;
+      ref.current.style.maxWidth = 'none';
+      ref.current.style.display = 'block';
+
       // Ensure element is visible and fully sized before capture
       const dataUrl = await toPng(ref.current, {
         backgroundColor: '#ffffff',
+        width: fullWidth,
+        height: fullHeight,
         style: {
           transform: 'scale(1)',
           borderRadius: '12px',
@@ -2853,8 +2876,6 @@ function IncomePage({ t, currentLang }: { t: any, currentLang: Language }) {
           margin: '0',
           display: 'block',
         },
-        width: Math.max(ref.current.scrollWidth + 40, 600), // Ensure robust width
-        height: ref.current.scrollHeight + 40,
       });
       const link = document.createElement('a');
       link.download = filename;
@@ -2865,6 +2886,12 @@ function IncomePage({ t, currentLang }: { t: any, currentLang: Language }) {
       console.error('Failed to download table image', err);
       alert('Could not generate image. Please try again.');
     } finally {
+      if (ref.current) {
+        ref.current.setAttribute('style', originalRefStyle);
+      }
+      if (scrollContainer) {
+        scrollContainer.setAttribute('style', originalScrollStyle);
+      }
       setDownloadingTable(null);
     }
   };
