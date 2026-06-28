@@ -1739,6 +1739,7 @@ export default function App() {
               onClose={() => setShowAccountSettingsModal({ isOpen: false })}
               t={t}
               initialView={showAccountSettingsModal.initialView}
+              onInstallApp={handleInstallApp}
             />
           </motion.div>
         )}
@@ -4687,33 +4688,6 @@ function ProfilePage({
               )}
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* PWA High-Fidelity App Installer Banner */}
-      <div className="px-4">
-        <div className="relative overflow-hidden bg-gradient-to-br from-[#0B0F19] via-[#0E1322] to-[#0B0F19] rounded-3xl p-5 border border-blue-500/20 shadow-xl space-y-4">
-          {/* Subtle glowing radial background element */}
-          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-xl pointer-events-none" />
-          
-          <div className="flex items-start justify-between relative z-10">
-            <div className="space-y-1">
-              <span className="text-[8px] font-black text-amber-505 bg-amber-500/15 border border-amber-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-widest leading-none">PWA Installer</span>
-              <h3 className="text-sm font-black text-white uppercase tracking-tight italic pt-1">EarnLink native app</h3>
-              <p className="text-[9.5px] text-gray-405 font-bold leading-relaxed max-w-[200px]">Install EarnLink directly to your mobile home screen with fast 1-tap ecosystem access.</p>
-            </div>
-            <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
-              <Download size={18} className="animate-pulse" />
-            </div>
-          </div>
-          
-          <button 
-            type="button"
-            onClick={onInstallApp}
-            className="w-full relative z-10 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black rounded-2xl text-[10px] uppercase tracking-widest transition-all text-center flex items-center justify-center gap-1.5 shadow-lg shadow-blue-500/10 active:scale-95 cursor-pointer"
-          >
-            Download App <Download size={12} />
-          </button>
         </div>
       </div>
 

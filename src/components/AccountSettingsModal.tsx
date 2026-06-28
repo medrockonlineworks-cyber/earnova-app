@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Lock, Mail, Phone, ChevronRight, CheckCircle2, Shield, Eye, EyeOff, User, Image } from 'lucide-react';
+import { X, Lock, Mail, Phone, ChevronRight, CheckCircle2, Shield, Eye, EyeOff, User, Image, Download } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import WebApp from '@twa-dev/sdk';
 import { cn } from '../lib/utils';
@@ -10,11 +10,12 @@ interface AccountSettingsModalProps {
   onClose: () => void;
   t: any;
   initialView?: SettingView;
+  onInstallApp?: () => void;
 }
 
-type SettingView = 'MENU' | 'PASSWORD' | 'EMAIL' | 'PHONE' | 'ADMIN' | 'NAME' | 'AVATAR';
+type SettingView = 'MENU' | 'PASSWORD' | 'EMAIL' | 'PHONE' | 'ADMIN' | 'NAME' | 'AVATAR' | 'APP';
 
-export function AccountSettingsModal({ onClose, t, initialView }: AccountSettingsModalProps) {
+export function AccountSettingsModal({ onClose, t, initialView, onInstallApp }: AccountSettingsModalProps) {
   const [view, setView] = useState<SettingView>(initialView || 'MENU');
   const [isSuccess, setIsSuccess] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
@@ -293,6 +294,56 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
         );
       case 'ADMIN':
         return <AdminCouncil onBack={() => setView('MENU')} />;
+      case 'APP':
+        return (
+          <div className="space-y-5 p-6">
+            <div className="text-center space-y-3">
+              <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center mx-auto border border-blue-100 shadow-sm animate-pulse">
+                <Download size={28} />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-gray-900 uppercase italic">EarnLink Native App</h3>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Install on your home screen</p>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3 text-xs leading-relaxed text-gray-600 font-medium">
+              <p className="font-bold text-gray-800">
+                🚀 Benefits of EarnLink Native App / ጥቅሞች:
+              </p>
+              <ul className="list-disc list-inside space-y-1.5 pl-1 text-[11px]">
+                <li><span className="font-bold text-gray-700">1-Tap Fast Launch / ቀጥታ መግቢያ:</span> Access your daily video tasks instantly from your mobile home screen.</li>
+                <li><span className="font-bold text-gray-700">Ultra-Smooth / ፈጣን አጠቃቀም:</span> Reduced lag, faster load times, and native-feeling gesture navigation.</li>
+                <li><span className="font-bold text-gray-700">Instant Updates / ቀጥታ መረጃ:</span> Keep track of your task commissions and balances safely.</li>
+                <li><span className="font-bold text-gray-700">Optimized Security / አስተማማኝ ዋስትና:</span> Secure local sandbox sessions for reliable fintech tasks execution.</li>
+              </ul>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200/50 rounded-2xl p-4 text-[11px] leading-relaxed text-amber-800 space-y-1.5">
+              <p className="font-bold flex items-center gap-1.5">
+                💡 Quick Installation Guide / መመሪያ:
+              </p>
+              <p>
+                Click the <span className="font-bold">Download App</span> button below. If your browser prompts you to install, accept the installation.
+              </p>
+              <p>
+                If no automated prompt appears, open your browser menu (tap the three dots <span className="font-bold">⋮</span> or share button <span className="font-bold">⎙</span>) and choose <span className="font-bold">"Add to Home Screen"</span>.
+              </p>
+            </div>
+
+            <button 
+              onClick={() => {
+                WebApp.HapticFeedback.impactOccurred('medium');
+                if (onInstallApp) {
+                  onInstallApp();
+                }
+              }} 
+              className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-200 hover:from-blue-500 hover:to-indigo-500 active:scale-95 transition-all flex items-center justify-center gap-2"
+            >
+              Download App <Download size={14} />
+            </button>
+          </div>
+        );
       default:
         return (
           <div className="p-6">
@@ -303,6 +354,7 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
                 { id: 'PASSWORD', label: 'Password Settings', desc: 'Secure your login', icon: Lock, color: 'text-blue-500', bg: 'bg-blue-50' },
                 { id: 'EMAIL', label: 'Email Address', desc: 'Manage your primary email', icon: Mail, color: 'text-indigo-500', bg: 'bg-indigo-50' },
                 { id: 'PHONE', label: 'Phone Number', desc: 'Registered mobile number', icon: Phone, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+                { id: 'APP', label: 'EarnLink Native App / መተግበሪያ', desc: 'Install and download the application / መተግበሪያውን ያውርዱ', icon: Download, color: 'text-blue-600', bg: 'bg-blue-50' },
                 { 
                   id: 'ADMIN', 
                   label: 'Admin Council', 
@@ -369,7 +421,7 @@ export function AccountSettingsModal({ onClose, t, initialView }: AccountSetting
                   </button>
                 )}
                 <h2 className="text-2xl font-black italic text-gray-900 tracking-tighter uppercase leading-none">
-                  {isSuccess ? 'Success' : view === 'MENU' ? 'Account' : view === 'NAME' ? 'Change Name' : view}
+                  {isSuccess ? 'Success' : view === 'MENU' ? 'Account' : view === 'NAME' ? 'Change Name' : view === 'APP' ? 'EarnLink App' : view}
                 </h2>
               </div>
               <button onClick={onClose} className="p-2 bg-gray-100 rounded-full text-gray-500 active:scale-90 transition-transform">
