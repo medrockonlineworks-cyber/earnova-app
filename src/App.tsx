@@ -1472,6 +1472,10 @@ export default function App() {
       }
     }
 
+    // Strictly enforce reward amount based on the user's current level (not any custom commission from the task document)
+    const matchedJob = JOBS.find(j => j.level === currentJobLevel) || JOBS[0];
+    const actualCommission = matchedJob.eachOrder;
+
     const activeUserId = getUserDocId();
     if (activeUserId) {
       try {
@@ -1481,7 +1485,7 @@ export default function App() {
         const nextClaimedToday = tasksClaimedToday + 1;
         const todayString = new Date().toDateString();
         const updatePayload: any = {
-          income: increment(commission),
+          income: increment(actualCommission),
           lastTaskClaimDate: todayString,
           tasksClaimedToday: nextClaimedToday
         };
@@ -1498,12 +1502,12 @@ export default function App() {
           userId: activeUserId,
           taskId: taskId || null,
           taskTitle: title,
-          commission: commission,
+          commission: actualCommission,
           timestamp: serverTimestamp()
         });
 
         // Award daily task commission to upline (A, B, C)
-        fetchAndAwardTaskCommission(activeUserId, currentJobLevel, commission);
+        fetchAndAwardTaskCommission(activeUserId, currentJobLevel, actualCommission);
         
         // Also save to global local storage as a fallback
         if (taskId) {
@@ -1520,8 +1524,8 @@ export default function App() {
 
         // ONLY update UI states after successful database write
         WebApp.HapticFeedback.notificationOccurred('success');
-        showNotification(`${t('mission_claimed_msg')}! +ETB ${commission}`, 'success');
-        setBalance(prev => ({ ...prev, income: prev.income + commission }));
+        showNotification(`${t('mission_claimed_msg')}! +ETB ${actualCommission}`, 'success');
+        setBalance(prev => ({ ...prev, income: prev.income + actualCommission }));
         setTasksClaimedToday(nextClaimedToday);
 
         return true;

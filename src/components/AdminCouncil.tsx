@@ -913,7 +913,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
     
     setIsWipingSystem(true);
     try {
-      const { collection, getDocs, deleteDoc, doc } = await import('firebase/firestore');
+      const { collection, getDocs, deleteDoc, doc, setDoc } = await import('firebase/firestore');
       
       // 1. Fetch and delete all recharges in parallel
       const rechargesSnap = await getDocs(collection(db, 'recharges'));
@@ -1006,15 +1006,36 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
         usersSnap.docs.map(async (d) => {
           const id = d.id;
           const phone = id.trim();
-          // Admin numbers to protect: 0926193920 and 926193920
-          const isAdminPhone = phone === '0926193920' || phone === '926193920';
+          const userData = d.data();
+          // Admin numbers to protect: 0926193920 and 926193920 or role 'admin'
+          const isAdmin = phone === '0926193920' || phone === '926193920' || userData.role === 'admin';
           
-          if (!isAdminPhone) {
+          if (!isAdmin) {
             try {
               await deleteDoc(doc(db, 'users', id));
               deletedCount++;
             } catch (e) {
               console.error("Error deleting user document:", id, e);
+            }
+          } else {
+            try {
+              // Reset admin account's personal/income balances to start completely fresh
+              await setDoc(doc(db, 'users', id), {
+                personal: 0.00,
+                income: 0.00,
+                workDeposit: 0.00,
+                completedTaskIds: [],
+                onboardingClaimed: false,
+                currentLevel: 'INTERN',
+                status: 'active',
+                role: 'admin',
+                totalRecharged: 0,
+                totalWithdrawn: 0,
+                invitedBy: "",
+                investments: []
+              }, { merge: true });
+            } catch (e) {
+              console.error("Error resetting admin values during database wipe:", id, e);
             }
           }
         })
@@ -1138,7 +1159,11 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
         await Promise.all(
           usersSnap.docs.map(async (d) => {
             const userData = d.data();
-            if (d.id === activeUserId) {
+            const id = d.id;
+            const phone = id.trim();
+            const isAdmin = id === activeUserId || userData.role === 'admin' || phone === '0926193920' || phone === '926193920';
+            
+            if (isAdmin) {
               // Keep the admin user alive but restore starting values
               await setDoc(doc(db, 'users', d.id), {
                 personal: 0.00,
@@ -1154,7 +1179,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                 invitedBy: "",
                 investments: []
               });
-            } else if (userData.role !== 'admin') {
+            } else {
               // Delete all other non-admin users to clean up registrations and referral trees
               try {
                 await deleteDoc(doc(db, 'users', d.id));

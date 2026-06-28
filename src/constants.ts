@@ -32,7 +32,7 @@ export interface Investment {
 }
 
 export const JOBS: Job[] = [
-  { id: '0', level: JobLevel.INTERN, deposit: 0, dailyTasks: 5, eachOrder: 22, color: 'text-amber-900', bgColor: 'bg-amber-50' },
+  { id: '0', level: JobLevel.INTERN, deposit: 0, dailyTasks: 5, eachOrder: 110, color: 'text-amber-900', bgColor: 'bg-amber-50' },
   { id: '1', level: JobLevel.JOB1, deposit: 1500, dailyTasks: 5, eachOrder: 26, color: 'text-orange-900', bgColor: 'bg-orange-50' },
   { id: '2', level: JobLevel.JOB2, deposit: 4000, dailyTasks: 10, eachOrder: 33, color: 'text-blue-900', bgColor: 'bg-blue-50' },
   { id: '3', level: JobLevel.JOB3, deposit: 10000, dailyTasks: 15, eachOrder: 69, color: 'text-emerald-900', bgColor: 'bg-emerald-50' },
