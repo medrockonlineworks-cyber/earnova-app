@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Gift, Sparkles, CheckCircle2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { doc, getDoc, updateDoc, arrayUnion, increment } from 'firebase/firestore';
+import { db, getUserDocId } from '../lib/firebase';
 
 interface GiftBoxModalProps {
   isOpen: boolean;
@@ -42,24 +44,139 @@ export function GiftBoxModal({ isOpen, onClose, onReward, t }: GiftBoxModalProps
       return;
     }
 
-    if (!(cleanCode in VALID_CODES)) {
-      setError('Invalid gift code. Please double-check and try again.');
-      return;
-    }
-
     setIsSubmitting(true);
-    const amount = VALID_CODES[cleanCode];
 
     try {
+      // First, fetch the promo code from Firestore
+      let codeRef = doc(db, 'promo_codes', cleanCode);
+      let codeSnap = await getDoc(codeRef);
+      let isCoupon = false;
+
+      if (!codeSnap.exists()) {
+        // Try looking up in the coupons collection
+        const couponRef = doc(db, 'coupons', cleanCode);
+        const couponSnap = await getDoc(couponRef);
+        if (couponSnap.exists()) {
+          codeRef = couponRef;
+          codeSnap = couponSnap;
+          isCoupon = true;
+        } else {
+          // Fallback to static codes if Firestore doesn't have it in either collection
+          if (cleanCode in VALID_CODES) {
+            const amount = VALID_CODES[cleanCode];
+            await onReward(amount, cleanCode);
+            claimedCodes.push(cleanCode);
+            localStorage.setItem('earnova_claimed_gift_codes', JSON.stringify(claimedCodes));
+            setSuccessReward(amount);
+            setCode('');
+          } else {
+            setError('Invalid gift code. Please double-check and try again.');
+          }
+          return;
+        }
+      }
+
+      const codeData = codeSnap.data();
+      if (codeData.type !== 'gift_box') {
+        setError('This code is for another campaign (e.g. Lucky Wheel).');
+        return;
+      }
+
+      const userId = getUserDocId();
+
+      // Check targetUser constraint
+      if (codeData.targetUser) {
+        const target = codeData.targetUser.trim().toLowerCase();
+        let isEligible = userId.toLowerCase() === target;
+
+        if (!isEligible && userId) {
+          try {
+            const userRef = doc(db, 'users', userId);
+            const userSnap = await getDoc(userRef);
+            if (userSnap.exists()) {
+              const uData = userSnap.data();
+              const uPhone = (uData.phoneNumber || '').trim().toLowerCase();
+              if (uPhone === target) {
+                isEligible = true;
+              }
+            }
+          } catch (err) {
+            console.warn("Failed to check target user details:", err);
+          }
+        }
+
+        if (!isEligible) {
+          setError('This code is restricted to a specific user.');
+          return;
+        }
+      }
+
+      // Check user claim limits (maxUsesPerUser)
+      const maxUsesPerUser = codeData.maxUsesPerUser || 1;
+      const claimedUsers = codeData.claimedUsers || [];
+      const userClaimsCount = claimedUsers.filter((id: string) => id === userId).length;
+
+      if (userClaimsCount >= maxUsesPerUser) {
+        setError(`You have already claimed this gift code ${userClaimsCount} time(s) (limit is ${maxUsesPerUser}).`);
+        // Record in local storage if limit is reached to cache
+        if (!claimedCodes.includes(cleanCode)) {
+          claimedCodes.push(cleanCode);
+          localStorage.setItem('earnova_claimed_gift_codes', JSON.stringify(claimedCodes));
+        }
+        return;
+      }
+
+      // Check global usage limits
+      if (isCoupon) {
+        if (codeData.usageLimit !== undefined && codeData.usageLimit <= 0) {
+          setError('This coupon has reached its redemption limit.');
+          return;
+        }
+      } else {
+        if (codeData.maxUses && (codeData.claimedCount || 0) >= codeData.maxUses) {
+          setError('This gift code has reached its maximum usage limit.');
+          return;
+        }
+      }
+
+      // Grant reward
+      const amount = codeData.amount || 0;
       await onReward(amount, cleanCode);
-      
-      // Save to claimed codes
+
+      // Record claim in Firestore
+      if (isCoupon) {
+        await updateDoc(codeRef, {
+          usageLimit: increment(-1),
+          claimedCount: increment(1),
+          claimedUsers: arrayUnion(userId)
+        });
+      } else {
+        await updateDoc(codeRef, {
+          claimedCount: increment(1),
+          claimedUsers: arrayUnion(userId)
+        });
+      }
+
+      // Record in user's profile if user document exists
+      if (userId) {
+        try {
+          const userRef = doc(db, 'users', userId);
+          await updateDoc(userRef, {
+            claimedCodes: arrayUnion(cleanCode)
+          });
+        } catch (uErr) {
+          console.warn("Failed to record claimed code in user doc:", uErr);
+        }
+      }
+
+      // Save to claimed codes in local storage
       claimedCodes.push(cleanCode);
       localStorage.setItem('earnova_claimed_gift_codes', JSON.stringify(claimedCodes));
-      
+
       setSuccessReward(amount);
       setCode('');
-    } catch (err) {
+    } catch (err: any) {
+      console.error("Error claiming gift code:", err);
       setError('An error occurred. Please try again.');
     } finally {
       setIsSubmitting(false);

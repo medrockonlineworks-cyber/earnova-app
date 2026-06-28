@@ -790,7 +790,7 @@ export function LoginPage({ currentLang, setCurrentLang, t, onLoginSuccess }: Lo
           SECURE 256-BIT ENCRYPTION PORTAL
         </p>
         <p className="text-[8px] font-bold text-gray-400">
-          © {new Date().getFullYear()} EARNOVA GLOBAL. ALL RIGHTS RESERVED.
+          © {new Date().getFullYear()} EARNLINK GLOBAL. ALL RIGHTS RESERVED.
         </p>
       </div>
     </div>

@@ -379,7 +379,7 @@ export default function App() {
             if (!initialVersion) {
               initialVersion = data.version;
             } else if (initialVersion !== data.version) {
-              console.log("Earnova App update detected! Automatically reloading to the latest build...", initialVersion, "->", data.version);
+              console.log("EarnLink App update detected! Automatically reloading to the latest build...", initialVersion, "->", data.version);
               window.location.reload();
             }
           }
@@ -901,7 +901,7 @@ export default function App() {
     WebApp.ready();
     WebApp.expand();
     
-    // Set colors statically to preserve Earnova Brand theme and ignore dynamic Telegram themes
+    // Set colors statically to preserve EarnLink Brand theme and ignore dynamic Telegram themes
     try {
       WebApp.setHeaderColor('#ffffff');
       WebApp.setBackgroundColor('#f9fafb');
@@ -958,11 +958,18 @@ export default function App() {
     // Add to Firestore database
     const userDocId = getUserDocId();
     if (userDocId) {
-      const { doc, updateDoc, increment } = await import('firebase/firestore');
+      const { doc, updateDoc, increment, addDoc, collection, serverTimestamp } = await import('firebase/firestore');
       const { db } = await import('./lib/firebase');
       const userRef = doc(db, 'users', userDocId);
       await updateDoc(userRef, {
         personal: increment(amount)
+      });
+      await addDoc(collection(db, 'bonuses'), {
+        userId: userDocId,
+        amount: amount,
+        type: 'gift_box',
+        label: `Gift Code Redeemed: ${code.toUpperCase()}`,
+        timestamp: serverTimestamp()
       });
     }
     showNotification(`Gift code ${code} redeemed! +${amount} ETB added to personal balance.`, 'success');
@@ -978,12 +985,21 @@ export default function App() {
     // Add to Firestore database
     const userDocId = getUserDocId();
     if (userDocId) {
-      const { doc, updateDoc, increment } = await import('firebase/firestore');
+      const { doc, updateDoc, increment, addDoc, collection, serverTimestamp } = await import('firebase/firestore');
       const { db } = await import('./lib/firebase');
       const userRef = doc(db, 'users', userDocId);
       await updateDoc(userRef, {
         personal: increment(amount - spinCost)
       });
+      if (amount > 0) {
+        await addDoc(collection(db, 'bonuses'), {
+          userId: userDocId,
+          amount: amount,
+          type: 'lucky_wheel',
+          label: 'Lucky Spin Wheel Reward',
+          timestamp: serverTimestamp()
+        });
+      }
     }
     if (amount > 0) {
       showNotification(`Won +${amount} ETB on Lucky Spin Wheel!`, 'success');
@@ -3342,7 +3358,7 @@ function IncomePage({ t, currentLang }: { t: any, currentLang: Language }) {
 const DEFAULT_FALLBACK_VIDEO_TASKS = [
   {
     id: 'earnova-def-ad-01',
-    title: 'Earnova Smart Investment Portfolio Allocation Strategy',
+    title: 'EarnLink Smart Investment Portfolio Allocation Strategy',
     url: 'https://www.youtube.com/watch?v=gT_PccP-Fq0',
     category: 'VIDEO WATCH',
     commission: 5.0,

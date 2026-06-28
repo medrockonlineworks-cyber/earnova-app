@@ -61,7 +61,7 @@ export function OnboardingTutorial({ currentLang, onClose, onPageChange, activeP
   // Multi-language text maps with blue / white styled icons
   const stepsData = [
     {
-      title: isAmharic ? "እንኳን ወደ Earnova በደህና መጡ!" : "Welcome to Earnova!",
+      title: isAmharic ? "እንኳን ወደ EarnLink በደህና መጡ!" : "Welcome to EarnLink!",
       subtitle: isAmharic ? "በኢትዮጵያ ቀዳሚው ትርፋማ የቪዲዮ ማስታወቂያ ግምገማ ህብረተሰብ" : "Ethiopia's #1 High-Yield Attention & Media Feedback Ecosystem",
       icon: <Award size={48} className="text-blue-600 animate-pulse fill-blue-500/10" />
     },
@@ -97,7 +97,7 @@ export function OnboardingTutorial({ currentLang, onClose, onPageChange, activeP
       targetPage: 'FUND',
       highlightId: 'nav-FUND',
       desc: isAmharic 
-        ? "የበለጸገውን የEarnova ፈንድ በመጠቀም ያጠራቀሙትን ገንዘብ አስተማማኝ በሆኑ ዕለታዊ ወለዶች ማሳደግ ይቻላል።" 
+        ? "የበለጸገውን የEarnLink ፈንድ በመጠቀም ያጠራቀሙትን ገንዘብ አስተማማኝ በሆኑ ዕለታዊ ወለዶች ማሳደግ ይቻላል።" 
         : "Put your accumulated earnings to work! Purchase high-yield secure fund packages structured with Tier-1 banks, generating stable daily dividends."
     },
     {
@@ -121,7 +121,7 @@ export function OnboardingTutorial({ currentLang, onClose, onPageChange, activeP
         : "Your profile center protects your identity. Bind your bank accounts, audit instant cash logs, and request priority earnings withdrawals."
     },
     {
-      title: isAmharic ? "የEarnova ስራን ለመጀመር ዝግጁ ነዎት!" : "Congratulations! You're Ready!",
+      title: isAmharic ? "የEarnLink ስራን ለመጀመር ዝግጁ ነዎት!" : "Congratulations! You're Ready!",
       subtitle: isAmharic ? "ቀዳሚውን የማስታወቂያ ግብረመልስ ስራ ይጀምሩ" : "Activate Your Financial Journey Today",
       icon: <Sparkles size={48} className="text-blue-500 animate-bounce" />
     }
@@ -209,8 +209,8 @@ export function OnboardingTutorial({ currentLang, onClose, onPageChange, activeP
                 <div className="bg-blue-50/20 border border-blue-100/45 rounded-2xl p-4.5 space-y-3">
                   <p className="text-xs font-medium text-gray-600 leading-relaxed">
                     {isAmharic 
-                      ? "ወደ Earnova በደህና መጡ! ይህ መድረክ የቪዲዮ ስፖንሰርሺፕ ማስታወቂያዎችን በመመልከት፣ በመገምገም እና በማረጋገጥ በየቀኑ ትክክለኛ የኢትዮጵያ ብር (ETB) ለመሰብሰብ ያስችልዎታል።"
-                      : "Earnova Media Hub links top brands and content creators with your feedback. Watch video ad reels, share standard ratings, and secure instant commissions directly credited into your personal balance."}
+                      ? "ወደ EarnLink በደህና መጡ! ይህ መድረክ የቪዲዮ ስፖንሰርሺፕ ማስታወቂያዎችን በመመልከት፣ በመገምገም እና በማረጋገጥ በየቀኑ ትክክለኛ የኢትዮጵያ ብር (ETB) ለመሰብሰብ ያስችልዎታል።"
+                      : "EarnLink Media Hub links top brands and content creators with your feedback. Watch video ad reels, share standard ratings, and secure instant commissions directly credited into your personal balance."}
                   </p>
                   
                   <div className="grid grid-cols-2 gap-3 pt-3 border-t border-blue-100/40">
@@ -400,7 +400,7 @@ export function OnboardingTutorial({ currentLang, onClose, onPageChange, activeP
                   </div>
 
                   <div className="space-y-1">
-                    <h4 className="text-sm font-black text-blue-950 uppercase tracking-tight">Earnova Qualified Executive</h4>
+                    <h4 className="text-sm font-black text-blue-950 uppercase tracking-tight">EarnLink Qualified Executive</h4>
                     <p className="text-[9px] font-mono font-bold text-blue-900/40 uppercase tracking-widest">Tutorial Completed successfully</p>
                   </div>
 
@@ -414,8 +414,8 @@ export function OnboardingTutorial({ currentLang, onClose, onPageChange, activeP
 
                   <p className="text-[10px] font-medium text-gray-500 leading-relaxed">
                     {isAmharic
-                      ? "አሁን ሁሉንም የEarnova ሚስጥራት በሚገባ ተረድተዋል! ዕለታዊ የቪዲዮ ስራዎችን በመጀመር ዛሬውኑ ገቢ መሰብሰብ ይጀምሩ። መልካም የስራ ጊዜ!"
-                      : "Welcome on board! You have configured your stream awareness and are fully verified to begin executing high-commission video tasks. Claim your bonus to launch your Earnova Career!"}
+                      ? "አሁን ሁሉንም የEarnLink ሚስጥራት በሚገባ ተረድተዋል! ዕለታዊ የቪዲዮ ስራዎችን በመጀመር ዛሬውኑ ገቢ መሰብሰብ ይጀምሩ። መልካም የስራ ጊዜ!"
+                      : "Welcome on board! You have configured your stream awareness and are fully verified to begin executing high-commission video tasks. Claim your bonus to launch your EarnLink Career!"}
                   </p>
                 </div>
               </div>

@@ -32,7 +32,7 @@ export function AboutUsModal({ isOpen, onClose }: AboutUsModalProps) {
               <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
                 <Info size={20} />
               </div>
-              <h3 className="text-lg font-black italic tracking-tighter uppercase leading-none">About EARNOVA</h3>
+              <h3 className="text-lg font-black italic tracking-tighter uppercase leading-none">About EARNLINK</h3>
             </div>
             <button onClick={onClose} className="p-2 bg-gray-50 rounded-xl text-gray-400">
               <X size={20} />
@@ -44,14 +44,14 @@ export function AboutUsModal({ isOpen, onClose }: AboutUsModalProps) {
                <div className="w-16 h-16 bg-blue-600 text-white rounded-[20px] flex items-center justify-center mx-auto mb-4 shadow-xl shadow-blue-200">
                  <Shield size={32} />
                </div>
-               <h4 className="text-xl font-black italic tracking-tighter mb-2">EARNOVA GLOBAL</h4>
+               <h4 className="text-xl font-black italic tracking-tighter mb-2">EARNLINK GLOBAL</h4>
                <p className="text-xs font-medium text-gray-500 leading-relaxed">
-                 Founded on June 28, 2026, EARNOVA is a premier digital task ecosystem providing sustainable income opportunities through micro-work and fintech innovative solutions.
+                 Founded on June 28, 2026, EarnLink is a premier digital task ecosystem providing sustainable income opportunities through micro-work and fintech innovative solutions.
                </p>
             </div>
 
             <div className="space-y-4">
-               <h5 className="text-[10px] font-black uppercase tracking-widest text-indigo-600">The EARNOVA Ecosystem</h5>
+               <h5 className="text-[10px] font-black uppercase tracking-widest text-indigo-600">The EARNLINK Ecosystem</h5>
                <div className="grid grid-cols-1 gap-3">
                  <div className="bg-white p-4 rounded-2xl border border-gray-100 flex items-start gap-3">
                    <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600 shrink-0">
@@ -79,7 +79,7 @@ export function AboutUsModal({ isOpen, onClose }: AboutUsModalProps) {
                    </div>
                    <div>
                      <h6 className="text-[11px] font-black italic uppercase tracking-tight mb-1">Team Productivity</h6>
-                     <p className="text-[10px] text-gray-500 font-medium leading-relaxed">Beyond recruitment, EARNOVA rewards leadership. Earn daily task dividends of 5%, 3%, and 1% based on your three-level team's daily activity.</p>
+                     <p className="text-[10px] text-gray-500 font-medium leading-relaxed">Beyond recruitment, EarnLink rewards leadership. Earn daily task dividends of 5%, 3%, and 1% based on your three-level team's daily activity.</p>
                    </div>
                  </div>
                </div>
@@ -88,7 +88,7 @@ export function AboutUsModal({ isOpen, onClose }: AboutUsModalProps) {
             <div className="space-y-4">
                <h5 className="text-[10px] font-black uppercase tracking-widest text-gray-400">Compliance & Global Presence</h5>
                <p className="text-[10px] text-gray-600 leading-relaxed font-medium">
-                 EARNOVA GLOBAL LTD operates under International Digital Trade Fair standards. We are committed to financial inclusion across East Africa, leveraging blockchain-encrypted verification systems to ensure that every task and withdrawal is processed with unmatched security.
+                 EARNLINK GLOBAL LTD operates under International Digital Trade Fair standards. We are committed to financial inclusion across East Africa, leveraging blockchain-encrypted verification systems to ensure that every task and withdrawal is processed with unmatched security.
                </p>
                <div className="p-4 bg-gray-100 rounded-2xl">
                  <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest mb-2 text-center">Corporate Registry</p>
@@ -104,7 +104,7 @@ export function AboutUsModal({ isOpen, onClose }: AboutUsModalProps) {
                  </div>
                </div>
                <p className="text-[9px] text-gray-400 text-center font-medium">
-                 © 2026 EARNOVA GLOBAL LTD. All rights reserved.
+                 © 2026 EARNLINK GLOBAL LTD. All rights reserved.
                </p>
 
                <button 

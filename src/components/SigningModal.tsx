@@ -88,7 +88,7 @@ export function SigningModal({ level, deposit, onClose, onSign, t }: SigningModa
           <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 space-y-3">
             <h4 className="text-[10px] font-black uppercase tracking-widest text-blue-600">Terms of Employment</h4>
             <div className="text-[10px] font-bold text-gray-600 leading-relaxed max-h-32 overflow-y-auto pr-2 space-y-2">
-              <p>By signing this digital contract, you agree to EARNOVA's operational guidelines for the {level} level.</p>
+              <p>By signing this digital contract, you agree to EARNLINK's operational guidelines for the {level} level.</p>
               <p>1. Performance: You will execute tasks with accuracy and efficiency.</p>
               <p>2. Security: Your account is non-transferable and must yield to system audits.</p>
               <p>3. Deposit: A work deposit of ETB {deposit.toLocaleString()} will be held in your work wallet to facilitate task matching.</p>

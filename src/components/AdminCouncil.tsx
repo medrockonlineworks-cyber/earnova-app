@@ -25,7 +25,9 @@ import {
   Search,
   Image,
   RefreshCw,
-  TrendingUp
+  TrendingUp,
+  Gift,
+  Sparkles
 } from 'lucide-react';
 import { db, auth, handleFirestoreError, OperationType, isUserAdmin, getUserDocId } from '../lib/firebase';
 import { 
@@ -46,7 +48,7 @@ import { cn } from '../lib/utils';
 import WebApp from '@twa-dev/sdk';
 import { compressImage } from '../lib/imageCompressor';
 
-type AdminTab = 'DEPOSITS' | 'WITHDRAWALS' | 'USERS' | 'TASKS' | 'ADS' | 'PAYMENTS';
+type AdminTab = 'DEPOSITS' | 'WITHDRAWALS' | 'USERS' | 'TASKS' | 'ADS' | 'PAYMENTS' | 'CODES';
 type UserFilter = 'ALL' | 'INTERN' | 'REGULAR';
 
 interface AdminCouncilProps {
@@ -116,6 +118,110 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
   const [cbeAccount, setCbeAccount] = useState('1000419524747');
   const [cbeHolder, setCbeHolder] = useState('Leykun jemaneh');
   const [isUpdatingPayments, setIsUpdatingPayments] = useState(false);
+
+  // States for promo codes management
+  const [promoCodes, setPromoCodes] = useState<any[]>([]);
+  const [newCodeString, setNewCodeString] = useState('');
+  const [newCodeType, setNewCodeType] = useState<'gift_box' | 'lucky_wheel'>('gift_box');
+  const [newCodeAmount, setNewCodeAmount] = useState<string>('100');
+  const [newCodeMaxUses, setNewCodeMaxUses] = useState<string>('1');
+  const [newCodeMaxUsesPerUser, setNewCodeMaxUsesPerUser] = useState<string>('1');
+  const [newCodeTargetUser, setNewCodeTargetUser] = useState('');
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+
+  useEffect(() => {
+    if (!isActivated || activeTab !== 'CODES') return;
+
+    const q = query(
+      collection(db, 'promo_codes'),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      setPromoCodes(snapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data()
+      })));
+    }, (err) => {
+      console.warn("Promo codes listener error (no index or empty fallback):", err);
+      // Fallback query without orderBy to ensure it works even if index isn't built yet
+      const qFallback = query(collection(db, 'promo_codes'));
+      onSnapshot(qFallback, (snapshot) => {
+        setPromoCodes(snapshot.docs.map(doc => ({ 
+          id: doc.id, 
+          ...doc.data()
+        })));
+      });
+    });
+
+    return () => unsub();
+  }, [activeTab, isActivated]);
+
+  const handleGenerateCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanCode = newCodeString.trim().toUpperCase();
+
+    if (!cleanCode) {
+      alert("Please enter or generate a code string");
+      return;
+    }
+
+    setIsGeneratingCode(true);
+    try {
+      const { doc, getDoc, setDoc } = await import('firebase/firestore');
+      const codeRef = doc(db, 'promo_codes', cleanCode);
+      const codeSnap = await getDoc(codeRef);
+
+      if (codeSnap.exists()) {
+        alert("This code already exists! Please choose a unique code.");
+        setIsGeneratingCode(false);
+        return;
+      }
+
+      const amountVal = Number(newCodeAmount) || 0;
+      const maxUsesVal = Number(newCodeMaxUses) || 1;
+      const maxUsesPerUserVal = Number(newCodeMaxUsesPerUser) || 1;
+      const targetUserVal = newCodeTargetUser.trim();
+
+      await setDoc(codeRef, {
+        code: cleanCode,
+        type: newCodeType,
+        amount: amountVal,
+        maxUses: maxUsesVal,
+        maxUsesPerUser: maxUsesPerUserVal,
+        targetUser: targetUserVal || null,
+        claimedCount: 0,
+        claimedUsers: [],
+        createdAt: serverTimestamp()
+      });
+
+      setNewCodeString('');
+      setNewCodeTargetUser('');
+      setNewCodeMaxUsesPerUser('1');
+      setSuccessToast(`Code ${cleanCode} generated successfully!`);
+      setTimeout(() => setSuccessToast(null), 3000);
+      if (WebApp?.HapticFeedback) {
+        WebApp.HapticFeedback.notificationOccurred('success');
+      }
+    } catch (err: any) {
+      console.error("Error creating promo code:", err);
+      alert("Failed to create code: " + err.message);
+    } finally {
+      setIsGeneratingCode(false);
+    }
+  };
+
+  const handleDeleteCode = async (codeId: string) => {
+    if (!confirm(`Are you sure you want to delete the code "${codeId}"?`)) return;
+    try {
+      const { doc, deleteDoc } = await import('firebase/firestore');
+      await deleteDoc(doc(db, 'promo_codes', codeId));
+      setSuccessToast(`Code ${codeId} deleted successfully.`);
+      setTimeout(() => setSuccessToast(null), 3000);
+    } catch (err: any) {
+      alert("Failed to delete code: " + err.message);
+    }
+  };
 
   // Monthly salaries states
   const [distributingSalaries, setDistributingSalaries] = useState(false);
@@ -1185,7 +1291,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
           {/* Navigation Tabs - Horizontal Scroll on Mobile */}
           <div className="bg-[#12182B]/60 border border-white/5 rounded-[24px] p-1 mb-6 relative z-10 backdrop-blur-md overflow-x-auto no-scrollbar">
             <div className="flex gap-1 min-w-max w-full">
-              {(['DEPOSITS', 'WITHDRAWALS', 'USERS', 'TASKS', 'ADS', 'PAYMENTS'] as AdminTab[]).map((tab) => (
+              {(['DEPOSITS', 'WITHDRAWALS', 'USERS', 'TASKS', 'ADS', 'PAYMENTS', 'CODES'] as AdminTab[]).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -1979,7 +2085,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                         type="text"
                         value={taskTitle}
                         onChange={(e) => setTaskTitle(e.target.value)}
-                        placeholder="e.g. Watch Earnova Presentation & Rate"
+                        placeholder="e.g. Watch EarnLink Presentation & Rate"
                         required
                         className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-xs font-bold text-white focus:border-amber-500 outline-none transition-colors"
                       />
@@ -2378,6 +2484,227 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                       )}
                     </button>
                   </form>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'CODES' && (
+              <div id="admin-codes-section" className="space-y-6 relative z-10 animate-fade-in">
+                {/* Create Promo Code Card */}
+                <div className="bg-[#12182B]/60 border border-white/5 rounded-[32px] p-6 backdrop-blur-md relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl" />
+                  <div className="flex items-center gap-2 mb-6">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center">
+                      <Gift size={18} />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black italic uppercase tracking-tighter text-white">Generate Promo Codes</h4>
+                      <p className="text-[8px] font-black tracking-widest text-gray-400 uppercase">Create custom or auto-generated codes for Gift Box and Lucky Wheel</p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleGenerateCode} className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Code String Input */}
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest pl-1">Promo Code String</label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text"
+                            value={newCodeString}
+                            onChange={(e) => setNewCodeString(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                            placeholder="e.g. WELCOME2026"
+                            required
+                            className="flex-1 px-4 py-3 bg-white/[0.03] border border-white/10 focus:border-amber-500 rounded-xl text-xs text-white uppercase focus:outline-none transition-all placeholder:text-gray-500 font-mono tracking-wider"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const randomStr = 'EARN' + Math.random().toString(36).substring(2, 8).toUpperCase();
+                              setNewCodeString(randomStr);
+                            }}
+                            className="px-3 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 text-amber-500 font-black rounded-xl text-[9px] uppercase tracking-wider active:scale-[0.98] transition-all"
+                          >
+                            Auto
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Code Type Select */}
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest pl-1">Campaign Type</label>
+                        <select
+                          value={newCodeType}
+                          onChange={(e) => {
+                            const val = e.target.value as 'gift_box' | 'lucky_wheel';
+                            setNewCodeType(val);
+                            if (val === 'lucky_wheel') {
+                              setNewCodeAmount('1'); // 1 free spin by default
+                            } else {
+                              setNewCodeAmount('100'); // 100 ETB by default
+                            }
+                          }}
+                          className="w-full px-4 py-3 bg-[#0c1020] border border-white/10 focus:border-amber-500 rounded-xl text-xs text-white uppercase focus:outline-none transition-all"
+                        >
+                          <option value="gift_box">Gift Box (ETB Reward)</option>
+                          <option value="lucky_wheel">Lucky Wheel (Free Spin)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Amount Input */}
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest pl-1">
+                          {newCodeType === 'gift_box' ? 'ETB Reward Amount' : 'Number of Free Spins'}
+                        </label>
+                        <input 
+                          type="number"
+                          value={newCodeAmount}
+                          onChange={(e) => setNewCodeAmount(e.target.value)}
+                          placeholder={newCodeType === 'gift_box' ? "e.g. 150" : "e.g. 1"}
+                          min="1"
+                          required
+                          className="w-full px-4 py-3 bg-white/[0.03] border border-white/10 focus:border-amber-500 rounded-xl text-xs text-white focus:outline-none transition-all"
+                        />
+                      </div>
+
+                      {/* Max Uses Input */}
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest pl-1">Max Uses (Per-Code Global Limit)</label>
+                        <input 
+                          type="number"
+                          value={newCodeMaxUses}
+                          onChange={(e) => setNewCodeMaxUses(e.target.value)}
+                          placeholder="e.g. 1 (Single Use)"
+                          min="1"
+                          required
+                          className="w-full px-4 py-3 bg-white/[0.03] border border-white/10 focus:border-amber-500 rounded-xl text-xs text-white focus:outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Max Uses Per User */}
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest pl-1">Max Uses Per User (Claims per Account)</label>
+                        <input 
+                          type="number"
+                          value={newCodeMaxUsesPerUser}
+                          onChange={(e) => setNewCodeMaxUsesPerUser(e.target.value)}
+                          placeholder="e.g. 1 (Default)"
+                          min="1"
+                          required
+                          className="w-full px-4 py-3 bg-white/[0.03] border border-white/10 focus:border-amber-500 rounded-xl text-xs text-white focus:outline-none transition-all"
+                        />
+                      </div>
+
+                      {/* Target User Identifier */}
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest pl-1">Target User (Optional Phone or User ID)</label>
+                        <input 
+                          type="text"
+                          value={newCodeTargetUser}
+                          onChange={(e) => setNewCodeTargetUser(e.target.value)}
+                          placeholder="e.g. 0912345678 or leave empty for all"
+                          className="w-full px-4 py-3 bg-white/[0.03] border border-white/10 focus:border-amber-500 rounded-xl text-xs text-white focus:outline-none transition-all placeholder:text-[10px] placeholder:uppercase"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isGeneratingCode}
+                      className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-[#0A0F1E] font-black rounded-2xl text-[10px] uppercase tracking-widest active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 mt-2"
+                    >
+                      {isGeneratingCode ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin text-current" />
+                          Generating Code...
+                        </>
+                      ) : (
+                        <>
+                          <Check size={12} />
+                          Generate Promo Code
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </div>
+
+                {/* Promo Codes List */}
+                <div className="bg-[#12182B]/60 border border-white/5 rounded-[32px] p-6 backdrop-blur-md">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-100 mb-4 flex items-center gap-2">
+                    <Sparkles size={14} className="text-amber-500" />
+                    Active Promo Codes ({promoCodes.length})
+                  </h4>
+
+                  {promoCodes.length === 0 ? (
+                    <div className="py-12 text-center text-gray-500 font-bold uppercase tracking-widest text-[9px]">
+                      No active codes found. Create one above!
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {promoCodes.map((item) => (
+                        <div 
+                          key={item.id} 
+                          className="bg-[#0D1224]/80 border border-white/5 hover:border-white/10 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-all"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={cn(
+                              "w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs shrink-0 mt-0.5",
+                              item.type === 'gift_box' ? "bg-amber-500/10 text-amber-500 border border-amber-500/20" : "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                            )}>
+                              {item.type === 'gift_box' ? 'GB' : 'LW'}
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-sm font-black uppercase tracking-widest text-white">{item.code}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(item.code);
+                                    alert(`Copied "${item.code}" to clipboard!`);
+                                  }}
+                                  className="text-[8px] bg-white/5 hover:bg-white/10 px-1.5 py-0.5 rounded text-gray-400 hover:text-white uppercase font-bold"
+                                >
+                                  Copy
+                                </button>
+                                {item.targetUser && (
+                                  <span className="text-[8px] bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded text-red-400 uppercase font-black tracking-wider">
+                                    Targeted: {item.targetUser}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[9px] text-gray-400 uppercase tracking-wider font-bold">
+                                {item.type === 'gift_box' ? `ETB Reward: +${item.amount} Birr` : `Spins Grant: +${item.amount} Free Spins`}
+                              </p>
+                              <p className="text-[8px] text-gray-500 font-bold uppercase tracking-widest">
+                                Limit: {item.maxUsesPerUser || 1} claims per account
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 border-white/5 pt-3 sm:pt-0">
+                            <div className="text-left sm:text-right">
+                              <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Usage Stats</p>
+                              <p className="text-[10px] font-black text-slate-300">
+                                {item.claimedCount || 0} / {item.maxUses || 1} claimed
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCode(item.id)}
+                              className="px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 transition-all rounded-xl text-[9px] font-black uppercase tracking-widest text-rose-500 active:scale-95 cursor-pointer"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
