@@ -91,7 +91,7 @@ export function SupportCenter({ isOpen, onClose, t }: SupportCenterProps) {
                   <button 
                     onClick={() => {
                       WebApp.HapticFeedback.impactOccurred('medium');
-                      window.open('https://t.me/EARNOVA_OFFICIALS', '_blank');
+                      window.open('https://t.me/EarnLink_officials', '_blank');
                     }}
                     className="w-full p-4 bg-white rounded-2xl border border-blue-100 flex items-center gap-4 active:scale-95 transition-all group text-left"
                   >
@@ -100,7 +100,7 @@ export function SupportCenter({ isOpen, onClose, t }: SupportCenterProps) {
                     </div>
                     <div className="flex-1">
                       <p className="text-xs font-black text-gray-900 uppercase italic leading-none">{t('support_telegram')}</p>
-                      <p className="text-[9px] font-bold text-blue-400 uppercase mt-1">@EARNOVA_OFFICIALS</p>
+                      <p className="text-[9px] font-bold text-blue-400 uppercase mt-1">@EarnLink_officials</p>
                     </div>
                     <ChevronRight size={16} className="text-gray-300 group-hover:text-blue-400" />
                   </button>
