@@ -414,6 +414,7 @@ export default function App() {
   const [showRechargeHistoryModal, setShowRechargeHistoryModal] = useState(false);
   const [showTaskHistoryModal, setShowTaskHistoryModal] = useState(false);
   const [showFinancialRecordModal, setShowFinancialRecordModal] = useState(false);
+  const [financialRecordInitialTab, setFinancialRecordInitialTab] = useState<'RECHARGE' | 'WITHDRAW' | 'BONUS' | 'COMMISSION'>('RECHARGE');
   const [showPersonalInfoModal, setShowPersonalInfoModal] = useState(false);
   const [showAboutUsModal, setShowAboutUsModal] = useState(false);
   const [showSigningModal, setShowSigningModal] = useState<{ level: JobLevel, deposit: number } | null>(null);
@@ -1047,7 +1048,13 @@ export default function App() {
       setShowInviteModal(true);
       return;
     }
-    if (action === 'Withdrawal History' || action === 'Financial record' || action === 'Financial Record' || action === t('financial_record')) {
+    if (action === 'Withdrawal History' || action === 'Withdrawal Record' || action === t('withdrawal_record')) {
+      setFinancialRecordInitialTab('WITHDRAW');
+      setShowFinancialRecordModal(true);
+      return;
+    }
+    if (action === 'Financial record' || action === 'Financial Record' || action === t('financial_record')) {
+      setFinancialRecordInitialTab('RECHARGE');
       setShowFinancialRecordModal(true);
       return;
     }
@@ -1873,6 +1880,7 @@ export default function App() {
               balance={balance}
               currentJobLevel={currentJobLevel}
               t={t}
+              initialTab={financialRecordInitialTab}
             />
           </motion.div>
         )}
@@ -4851,6 +4859,7 @@ function ProfilePage({
 
   const sections = [
     { label: t('financial_record'), icon: ScrollText, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { label: t('withdrawal_record'), icon: History, color: 'text-rose-600', bg: 'bg-rose-50' },
     { label: t('support_center'), icon: HelpCircle, color: 'text-blue-600', bg: 'bg-blue-50' },
     { label: 'About us', icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50' },
     { label: 'Onboarding Tour', icon: Star, color: 'text-amber-600', bg: 'bg-amber-50' },

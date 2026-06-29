@@ -14,7 +14,8 @@ import {
   History,
   Gift,
   Percent,
-  Users
+  Users,
+  ArrowLeft
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -41,10 +42,17 @@ interface FinancialRecordModalProps {
   };
   currentJobLevel: JobLevel;
   t: any;
+  initialTab?: 'RECHARGE' | 'WITHDRAW' | 'BONUS' | 'COMMISSION';
 }
 
-export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel, t }: FinancialRecordModalProps) {
-  const [activeTab, setActiveTab] = useState<'RECHARGE' | 'WITHDRAW' | 'BONUS' | 'COMMISSION'>('RECHARGE');
+export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel, t, initialTab = 'RECHARGE' }: FinancialRecordModalProps) {
+  const [activeTab, setActiveTab] = useState<'RECHARGE' | 'WITHDRAW' | 'BONUS' | 'COMMISSION'>(initialTab);
+
+  useEffect(() => {
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
   const [recharges, setRecharges] = useState<any[]>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [bonuses, setBonuses] = useState<any[]>([]);
@@ -198,6 +206,7 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'approved':
+      case 'successful':
       case 'completed': return <CheckCircle2 size={14} className="text-emerald-500" />;
       case 'rejected':
       case 'failed': return <AlertCircle size={14} className="text-rose-500" />;
@@ -208,6 +217,7 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'approved':
+      case 'successful':
       case 'completed': return 'bg-emerald-50 text-emerald-700 border-emerald-100';
       case 'rejected':
       case 'failed': return 'bg-rose-50 text-rose-700 border-rose-100';
@@ -238,12 +248,19 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
           {/* Header */}
           <div className="p-6 border-b border-gray-100 bg-white flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
-                <History size={20} />
+              <div className={cn(
+                "w-10 h-10 rounded-xl flex items-center justify-center",
+                activeTab === 'WITHDRAW' ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"
+              )}>
+                {activeTab === 'WITHDRAW' ? <ArrowDownRight size={20} /> : <History size={20} />}
               </div>
               <div>
-                <h3 className="text-lg font-black italic tracking-tighter uppercase leading-none">Financial Record</h3>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Transaction History</p>
+                <h3 className="text-lg font-black italic tracking-tighter uppercase leading-none">
+                  {activeTab === 'WITHDRAW' ? 'Withdrawal Record' : 'Financial Record'}
+                </h3>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
+                  {activeTab === 'WITHDRAW' ? 'Your Cash-Out Logs' : 'Transaction History'}
+                </p>
               </div>
             </div>
             <button 
@@ -258,147 +275,173 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-6 no-scrollbar pb-10">
-            {/* Summary Card */}
-            <div className="bg-gray-900 rounded-[32px] p-6 text-white relative overflow-hidden shadow-xl shadow-gray-200">
-               <div className="absolute top-[-20%] right-[-10%] w-40 h-40 bg-blue-600/20 blur-[60px] rounded-full" />
-               <div className="relative z-10">
-                 <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-2">Portfolio Value</p>
-                 <h2 className="text-4xl font-black italic tracking-tighter mb-6 flex items-baseline gap-2">
-                   <span className="text-sm font-bold opacity-60">ETB</span>
-                   {totalBalance.toLocaleString()}
-                 </h2>
-                 <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
-                       <p className="text-[8px] font-bold text-emerald-400 uppercase tracking-widest mb-1 flex items-center gap-1">
-                         <TrendingUp size={8} /> Income
-                       </p>
-                       <p className="text-sm font-black italic tracking-tighter text-white">ETB {balance.income.toLocaleString()}</p>
-                    </div>
-                    <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
-                       <p className="text-[8px] font-bold text-blue-400 uppercase tracking-widest mb-1 flex items-center gap-1">
-                         <Wallet size={8} /> Work Wallet
-                       </p>
-                       <p className="text-sm font-black italic tracking-tighter text-white">ETB {balance.workDeposit.toLocaleString()}</p>
-                    </div>
-                 </div>
-               </div>
-            </div>
-
-            {/* Active Signed Job Contracts */}
-            <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-[10px] font-black text-gray-450 uppercase tracking-widest leading-none mb-1 text-gray-400">Signed Level Contracts</h4>
-                  <p className="text-xs font-black text-gray-900 uppercase italic tracking-tight">Active Work Authorization</p>
-                </div>
-                {currentJobLevel !== JobLevel.INTERN ? (
-                  <div className="bg-emerald-50 text-emerald-600 px-3 py-1 border border-emerald-100 rounded-full text-[8.5px] font-black uppercase tracking-widest animate-pulse flex items-center gap-1">
-                    <CheckCircle2 size={10} className="text-emerald-500" /> Authorized
-                  </div>
-                ) : (
-                  <div className="bg-blue-50 text-blue-600 px-3 py-1 border border-blue-100 rounded-full text-[8.5px] font-black uppercase tracking-widest">
-                    Temporary
-                  </div>
-                )}
-              </div>
-
-              {(() => {
-                const activeJob = JOBS.find(j => j.level === currentJobLevel);
-                if (!activeJob) return null;
-
-                return (
-                  <div className="bg-gray-50/50 hover:bg-gray-50/80 border border-gray-100 p-4 rounded-2xl flex items-center justify-between transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "w-11 h-11 rounded-2xl flex items-center justify-center font-black italic text-sm tracking-tighter border shadow-sm",
-                        activeJob.bgColor,
-                        activeJob.color,
-                        "border-current/10"
-                      )}>
-                        {activeJob.level === JobLevel.INTERN ? 'INT' : activeJob.level}
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-black text-gray-800 uppercase tracking-tight leading-none mb-1">
-                          {activeJob.level === JobLevel.INTERN ? 'Free Intern Period' : `${activeJob.level} Active Contract`}
-                        </p>
-                        <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">
-                          Tasks: {activeJob.dailyTasks} • Rate: {activeJob.eachOrder} ETB/order
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Signed Deposit</p>
-                      <p className="text-sm font-black text-gray-950 font-mono">
-                        ETB {activeJob.deposit.toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Show other potential upgrades signed / tracked if available */}
-              {currentJobLevel !== JobLevel.INTERN && (
-                <div className="pt-2 border-t border-dashed border-gray-100">
-                  <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-relaxed">
-                    * Upgrading to higher job levels will fully transfer and refund your current ETB {JOBS.find(j => j.level === currentJobLevel)?.deposit.toLocaleString()} deposit back to your Personal Wallet automatically.
-                  </p>
-                </div>
-              )}
-            </div>            {/* 2x2 Grid Tab Switcher */}
-            <div className="grid grid-cols-2 gap-2 bg-white p-2 rounded-3xl border border-gray-100 shadow-sm flex-shrink-0">
+            {/* Back to General Financial Records button when in Withdraw tab */}
+            {activeTab === 'WITHDRAW' && (
+              <div className="flex items-center justify-between pb-2">
                 <button 
                   onClick={() => {
                     setActiveTab('RECHARGE');
                     WebApp.HapticFeedback.impactOccurred('light');
                   }}
-                  className={cn(
-                    "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
-                    activeTab === 'RECHARGE' ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
-                  )}
+                  className="px-4 py-2 bg-white border border-gray-100 hover:bg-gray-50 active:scale-95 rounded-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-gray-500 transition-all shadow-sm"
                 >
-                  <ArrowUpRight size={12} />
-                  Recharge
+                  <ArrowLeft size={12} className="text-gray-400" />
+                  Show Other Records
                 </button>
-                <button 
-                  onClick={() => {
-                    setActiveTab('WITHDRAW');
-                    WebApp.HapticFeedback.impactOccurred('light');
-                  }}
-                  className={cn(
-                    "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
-                    activeTab === 'WITHDRAW' ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
+                <span className="text-[9px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100">
+                  Only Withdrawals
+                </span>
+              </div>
+            )}
+            {/* Summary Card */}
+            {activeTab !== 'WITHDRAW' && (
+              <div className="bg-gray-900 rounded-[32px] p-6 text-white relative overflow-hidden shadow-xl shadow-gray-200">
+                 <div className="absolute top-[-20%] right-[-10%] w-40 h-40 bg-blue-600/20 blur-[60px] rounded-full" />
+                 <div className="relative z-10">
+                   <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-2">Portfolio Value</p>
+                   <h2 className="text-4xl font-black italic tracking-tighter mb-6 flex items-baseline gap-2">
+                     <span className="text-sm font-bold opacity-60">ETB</span>
+                     {totalBalance.toLocaleString()}
+                   </h2>
+                   <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
+                         <p className="text-[8px] font-bold text-emerald-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+                           <TrendingUp size={8} /> Income
+                         </p>
+                         <p className="text-sm font-black italic tracking-tighter text-white">ETB {balance.income.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
+                         <p className="text-[8px] font-bold text-blue-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+                           <Wallet size={8} /> Work Wallet
+                         </p>
+                         <p className="text-sm font-black italic tracking-tighter text-white">ETB {balance.workDeposit.toLocaleString()}</p>
+                      </div>
+                   </div>
+                 </div>
+              </div>
+            )}
+
+            {/* Active Signed Job Contracts */}
+            {activeTab !== 'WITHDRAW' && (
+              <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-[10px] font-black text-gray-450 uppercase tracking-widest leading-none mb-1 text-gray-400">Signed Level Contracts</h4>
+                    <p className="text-xs font-black text-gray-900 uppercase italic tracking-tight">Active Work Authorization</p>
+                  </div>
+                  {currentJobLevel !== JobLevel.INTERN ? (
+                    <div className="bg-emerald-50 text-emerald-600 px-3 py-1 border border-emerald-100 rounded-full text-[8.5px] font-black uppercase tracking-widest animate-pulse flex items-center gap-1">
+                      <CheckCircle2 size={10} className="text-emerald-500" /> Authorized
+                    </div>
+                  ) : (
+                    <div className="bg-blue-50 text-blue-600 px-3 py-1 border border-blue-100 rounded-full text-[8.5px] font-black uppercase tracking-widest">
+                      Temporary
+                    </div>
                   )}
-                >
-                  <ArrowDownRight size={12} />
-                  Withdraw
-                </button>
-                <button 
-                  onClick={() => {
-                    setActiveTab('BONUS');
-                    WebApp.HapticFeedback.impactOccurred('light');
-                  }}
-                  className={cn(
-                    "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
-                    activeTab === 'BONUS' ? "bg-amber-500 border-amber-500 text-white shadow-lg shadow-amber-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
-                  )}
-                >
-                  <Gift size={12} />
-                  Bonus History
-                </button>
-                <button 
-                  onClick={() => {
-                    setActiveTab('COMMISSION');
-                    WebApp.HapticFeedback.impactOccurred('light');
-                  }}
-                  className={cn(
-                    "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
-                    activeTab === 'COMMISSION' ? "bg-emerald-600 border-emerald-600 text-white shadow-lg shadow-emerald-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
-                  )}
-                >
-                  <Percent size={12} />
-                  Commissions
-                </button>
-            </div>
+                </div>
+
+                {(() => {
+                  const activeJob = JOBS.find(j => j.level === currentJobLevel);
+                  if (!activeJob) return null;
+
+                  return (
+                    <div className="bg-gray-50/50 hover:bg-gray-50/80 border border-gray-100 p-4 rounded-2xl flex items-center justify-between transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className={cn(
+                          "w-11 h-11 rounded-2xl flex items-center justify-center font-black italic text-sm tracking-tighter border shadow-sm",
+                          activeJob.bgColor,
+                          activeJob.color,
+                          "border-current/10"
+                        )}>
+                          {activeJob.level === JobLevel.INTERN ? 'INT' : activeJob.level}
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black text-gray-800 uppercase tracking-tight leading-none mb-1">
+                            {activeJob.level === JobLevel.INTERN ? 'Free Intern Period' : `${activeJob.level} Active Contract`}
+                          </p>
+                          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                            Tasks: {activeJob.dailyTasks} • Rate: {activeJob.eachOrder} ETB/order
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Signed Deposit</p>
+                        <p className="text-sm font-black text-gray-950 font-mono">
+                          ETB {activeJob.deposit.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Show other potential upgrades signed / tracked if available */}
+                {currentJobLevel !== JobLevel.INTERN && (
+                  <div className="pt-2 border-t border-dashed border-gray-100">
+                    <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-relaxed">
+                      * Upgrading to higher job levels will fully transfer and refund your current ETB {JOBS.find(j => j.level === currentJobLevel)?.deposit.toLocaleString()} deposit back to your Personal Wallet automatically.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 2x2 Grid Tab Switcher */}
+            {activeTab !== 'WITHDRAW' && (
+              <div className="grid grid-cols-2 gap-2 bg-white p-2 rounded-3xl border border-gray-100 shadow-sm flex-shrink-0">
+                  <button 
+                    onClick={() => {
+                      setActiveTab('RECHARGE');
+                      WebApp.HapticFeedback.impactOccurred('light');
+                    }}
+                    className={cn(
+                      "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
+                      activeTab === 'RECHARGE' ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
+                    )}
+                  >
+                    <ArrowUpRight size={12} />
+                    Recharge Record
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setActiveTab('WITHDRAW');
+                      WebApp.HapticFeedback.impactOccurred('light');
+                    }}
+                    className={cn(
+                      "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
+                      activeTab === 'WITHDRAW' ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
+                    )}
+                  >
+                    <ArrowDownRight size={12} />
+                    Withdrawal Record
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setActiveTab('BONUS');
+                      WebApp.HapticFeedback.impactOccurred('light');
+                    }}
+                    className={cn(
+                      "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
+                      activeTab === 'BONUS' ? "bg-amber-500 border-amber-500 text-white shadow-lg shadow-amber-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
+                    )}
+                  >
+                    <Gift size={12} />
+                    Bonus Record
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setActiveTab('COMMISSION');
+                      WebApp.HapticFeedback.impactOccurred('light');
+                    }}
+                    className={cn(
+                      "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
+                      activeTab === 'COMMISSION' ? "bg-emerald-600 border-emerald-600 text-white shadow-lg shadow-emerald-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
+                    )}
+                  >
+                    <Percent size={12} />
+                    Commission Record
+                  </button>
+              </div>
+            )}
 
             {/* Transactions / Income Lists */}
             <div className="space-y-3 flex-1 overflow-y-auto pr-1">
@@ -584,10 +627,14 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
                     }
 
                     return itemsToDisplay.map((item) => {
-                      const status = item.status || 'completed';
                       const isRecharge = activeTab === 'RECHARGE';
                       const isWithdraw = activeTab === 'WITHDRAW';
                       const isBonus = activeTab === 'BONUS';
+
+                      let status = item.status || 'completed';
+                      if (isWithdraw && status === 'approved') {
+                        status = 'successful';
+                      }
                       
                       let label = 'Transaction';
                       let iconColor = 'bg-blue-50 text-blue-600';

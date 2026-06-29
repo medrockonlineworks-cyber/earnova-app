@@ -817,7 +817,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
     try {
       setProcessingId(withdrawalId);
       WebApp.HapticFeedback.impactOccurred('medium');
-      await updateDoc(doc(db, 'withdrawals', withdrawalId), { status: 'approved' });
+      await updateDoc(doc(db, 'withdrawals', withdrawalId), { status: 'successful' });
       WebApp.HapticFeedback.notificationOccurred('success');
     } catch (error) {
       console.error("Approval error:", error);
@@ -844,8 +844,8 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
         console.warn("Withdrawal is already rejected");
         return;
       }
-      if (wData.status === 'approved') {
-        console.warn("Withdrawal is already approved");
+      if (wData.status === 'approved' || wData.status === 'successful') {
+        console.warn("Withdrawal is already approved or successful");
         return;
       }
 
@@ -1953,7 +1953,13 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                 {/* Status Segmented Control */}
                 <div className="flex gap-1.5 p-1 bg-[#12182B]/80 border border-white/5 rounded-2xl">
                   {(['pending', 'approved', 'rejected'] as const).map((filter) => {
-                     const count = withdrawals.filter(w => (w.status || 'pending').toLowerCase() === filter).length;
+                     const count = withdrawals.filter(w => {
+                       const s = (w.status || 'pending').toLowerCase();
+                       if (filter === 'approved') {
+                         return s === 'approved' || s === 'successful';
+                       }
+                       return s === filter;
+                     }).length;
                      return (
                        <button
                          key={filter}
@@ -1977,7 +1983,13 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
 
                 <div className="space-y-3">
                    {[...withdrawals]
-                     .filter(w => (w.status || 'pending').toLowerCase() === withdrawalFilter)
+                     .filter(w => {
+                       const s = (w.status || 'pending').toLowerCase();
+                       if (withdrawalFilter === 'approved') {
+                         return s === 'approved' || s === 'successful';
+                       }
+                       return s === withdrawalFilter;
+                     })
                      .sort((a, b) => {
                        const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : (a.timestamp ? new Date(a.timestamp) : new Date(0));
                        const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : (b.timestamp ? new Date(b.timestamp) : new Date(0));
@@ -2100,7 +2112,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                         <div className="space-y-2">
                           <div className={cn(
                             "py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-center border font-mono w-full",
-                            (item.status || 'pending').toLowerCase() === 'approved'
+                            (item.status || 'pending').toLowerCase() === 'approved' || (item.status || 'pending').toLowerCase() === 'successful'
                               ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
                               : "bg-rose-500/10 border-rose-500/20 text-rose-500"
                           )}>
