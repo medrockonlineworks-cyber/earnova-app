@@ -42,14 +42,14 @@ interface FinancialRecordModalProps {
   };
   currentJobLevel: JobLevel;
   t: any;
-  initialTab?: 'RECHARGE' | 'WITHDRAW' | 'BONUS' | 'COMMISSION';
+  initialTab?: 'RECHARGE' | 'WITHDRAW' | 'BONUS' | 'COMMISSION' | null;
 }
 
-export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel, t, initialTab = 'RECHARGE' }: FinancialRecordModalProps) {
-  const [activeTab, setActiveTab] = useState<'RECHARGE' | 'WITHDRAW' | 'BONUS' | 'COMMISSION'>(initialTab);
+export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel, t, initialTab = null }: FinancialRecordModalProps) {
+  const [activeTab, setActiveTab] = useState<'RECHARGE' | 'WITHDRAW' | 'BONUS' | 'COMMISSION' | null>(initialTab);
 
   useEffect(() => {
-    if (isOpen && initialTab) {
+    if (isOpen) {
       setActiveTab(initialTab);
     }
   }, [isOpen, initialTab]);
@@ -248,18 +248,36 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
           {/* Header */}
           <div className="p-6 border-b border-gray-100 bg-white flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-3">
-              <div className={cn(
-                "w-10 h-10 rounded-xl flex items-center justify-center",
-                activeTab === 'WITHDRAW' ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"
-              )}>
-                {activeTab === 'WITHDRAW' ? <ArrowDownRight size={20} /> : <History size={20} />}
-              </div>
+              {activeTab !== null ? (
+                <button
+                  onClick={() => {
+                    setActiveTab(null);
+                    WebApp.HapticFeedback.impactOccurred('light');
+                  }}
+                  className="w-10 h-10 bg-gray-100 hover:bg-gray-200 active:scale-90 rounded-xl flex items-center justify-center text-gray-700 transition-all border border-gray-200/50 animate-fade-in"
+                  title="Back to Overview"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+              ) : (
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-50 text-emerald-600">
+                  <History size={20} />
+                </div>
+              )}
               <div>
                 <h3 className="text-lg font-black italic tracking-tighter uppercase leading-none">
-                  {activeTab === 'WITHDRAW' ? 'Withdrawal Record' : 'Financial Record'}
+                  {activeTab === 'RECHARGE' && 'Recharge Record'}
+                  {activeTab === 'WITHDRAW' && 'Withdrawal Record'}
+                  {activeTab === 'BONUS' && 'Bonus Record'}
+                  {activeTab === 'COMMISSION' && 'Commission Record'}
+                  {activeTab === null && 'Financial Record'}
                 </h3>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
-                  {activeTab === 'WITHDRAW' ? 'Your Cash-Out Logs' : 'Transaction History'}
+                  {activeTab === 'RECHARGE' && 'Your Deposit Logs'}
+                  {activeTab === 'WITHDRAW' && 'Your Cash-Out Logs'}
+                  {activeTab === 'BONUS' && 'Your Earned Bonuses'}
+                  {activeTab === 'COMMISSION' && 'Your Team & Task Profits'}
+                  {activeTab === null && 'Transaction History'}
                 </p>
               </div>
             </div>
@@ -275,26 +293,9 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-6 no-scrollbar pb-10">
-            {/* Back to General Financial Records button when in Withdraw tab */}
-            {activeTab === 'WITHDRAW' && (
-              <div className="flex items-center justify-between pb-2">
-                <button 
-                  onClick={() => {
-                    setActiveTab('RECHARGE');
-                    WebApp.HapticFeedback.impactOccurred('light');
-                  }}
-                  className="px-4 py-2 bg-white border border-gray-100 hover:bg-gray-50 active:scale-95 rounded-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-gray-500 transition-all shadow-sm"
-                >
-                  <ArrowLeft size={12} className="text-gray-400" />
-                  Show Other Records
-                </button>
-                <span className="text-[9px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100">
-                  Only Withdrawals
-                </span>
-              </div>
-            )}
-            {/* Summary Card */}
-            {activeTab !== 'WITHDRAW' && (
+
+            {/* Summary Card - Only visible in overview */}
+            {activeTab === null && (
               <div className="bg-gray-900 rounded-[32px] p-6 text-white relative overflow-hidden shadow-xl shadow-gray-200">
                  <div className="absolute top-[-20%] right-[-10%] w-40 h-40 bg-blue-600/20 blur-[60px] rounded-full" />
                  <div className="relative z-10">
@@ -322,7 +323,7 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
             )}
 
             {/* Active Signed Job Contracts */}
-            {activeTab !== 'WITHDRAW' && (
+            {activeTab === null && (
               <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -385,66 +386,84 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
               </div>
             )}
 
-            {/* 2x2 Grid Tab Switcher */}
-            {activeTab !== 'WITHDRAW' && (
-              <div className="grid grid-cols-2 gap-2 bg-white p-2 rounded-3xl border border-gray-100 shadow-sm flex-shrink-0">
-                  <button 
-                    onClick={() => {
-                      setActiveTab('RECHARGE');
-                      WebApp.HapticFeedback.impactOccurred('light');
-                    }}
-                    className={cn(
-                      "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
-                      activeTab === 'RECHARGE' ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
-                    )}
-                  >
-                    <ArrowUpRight size={12} />
-                    Recharge Record
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setActiveTab('WITHDRAW');
-                      WebApp.HapticFeedback.impactOccurred('light');
-                    }}
-                    className={cn(
-                      "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
-                      activeTab === 'WITHDRAW' ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
-                    )}
-                  >
-                    <ArrowDownRight size={12} />
-                    Withdrawal Record
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setActiveTab('BONUS');
-                      WebApp.HapticFeedback.impactOccurred('light');
-                    }}
-                    className={cn(
-                      "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
-                      activeTab === 'BONUS' ? "bg-amber-500 border-amber-500 text-white shadow-lg shadow-amber-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
-                    )}
-                  >
-                    <Gift size={12} />
-                    Bonus Record
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setActiveTab('COMMISSION');
-                      WebApp.HapticFeedback.impactOccurred('light');
-                    }}
-                    className={cn(
-                      "py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border",
-                      activeTab === 'COMMISSION' ? "bg-emerald-600 border-emerald-600 text-white shadow-lg shadow-emerald-100" : "bg-white border-transparent text-gray-500 hover:bg-gray-50"
-                    )}
-                  >
-                    <Percent size={12} />
-                    Commission Record
-                  </button>
+             {/* 2x2 Grid Tab Switcher - Only visible in overview */}
+             {activeTab === null && (
+               <div className="grid grid-cols-2 gap-3">
+                   <button 
+                     onClick={() => {
+                       setActiveTab('RECHARGE');
+                       WebApp.HapticFeedback.impactOccurred('light');
+                     }}
+                     className="py-5 bg-white border border-gray-100 rounded-3xl flex flex-col items-center justify-center gap-2.5 active:scale-95 transition-all shadow-sm hover:bg-gray-50/50"
+                   >
+                     <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                       <ArrowUpRight size={18} />
+                     </div>
+                     <span className="text-[10px] font-black uppercase tracking-wider text-gray-800">Recharge Record</span>
+                   </button>
+
+                   <button 
+                     onClick={() => {
+                       setActiveTab('WITHDRAW');
+                       WebApp.HapticFeedback.impactOccurred('light');
+                     }}
+                     className="py-5 bg-white border border-gray-100 rounded-3xl flex flex-col items-center justify-center gap-2.5 active:scale-95 transition-all shadow-sm hover:bg-gray-50/50"
+                   >
+                     <div className="w-10 h-10 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center">
+                       <ArrowDownRight size={18} />
+                     </div>
+                     <span className="text-[10px] font-black uppercase tracking-wider text-gray-800">Withdrawal Record</span>
+                   </button>
+
+                   <button 
+                     onClick={() => {
+                       setActiveTab('BONUS');
+                       WebApp.HapticFeedback.impactOccurred('light');
+                     }}
+                     className="py-5 bg-white border border-gray-100 rounded-3xl flex flex-col items-center justify-center gap-2.5 active:scale-95 transition-all shadow-sm hover:bg-gray-50/50"
+                   >
+                     <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center">
+                       <Gift size={18} />
+                     </div>
+                     <span className="text-[10px] font-black uppercase tracking-wider text-gray-800">Bonus Record</span>
+                   </button>
+
+                   <button 
+                     onClick={() => {
+                       setActiveTab('COMMISSION');
+                       WebApp.HapticFeedback.impactOccurred('light');
+                     }}
+                     className="py-5 bg-white border border-gray-100 rounded-3xl flex flex-col items-center justify-center gap-2.5 active:scale-95 transition-all shadow-sm hover:bg-gray-50/50"
+                   >
+                     <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
+                       <Percent size={18} />
+                     </div>
+                     <span className="text-[10px] font-black uppercase tracking-wider text-gray-800">Commission Record</span>
+                   </button>
+               </div>
+             )}
+
+            {/* Total Record Stats box - only in expanded screen */}
+            {activeTab !== null && (
+              <div className="flex items-center justify-between bg-white px-4 py-3.5 rounded-2xl border border-gray-100/80 shadow-sm flex-shrink-0 animate-fade-in">
+                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Total Recorded Logs</span>
+                <span className={cn(
+                  "text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full border",
+                  activeTab === 'RECHARGE' && "text-indigo-600 bg-indigo-50 border-indigo-100",
+                  activeTab === 'WITHDRAW' && "text-rose-600 bg-rose-50 border-rose-100",
+                  activeTab === 'BONUS' && "text-amber-600 bg-amber-50 border-amber-100",
+                  activeTab === 'COMMISSION' && "text-emerald-600 bg-emerald-50 border-emerald-100"
+                )}>
+                  {activeTab === 'RECHARGE' && `${recharges.length} Deposits`}
+                  {activeTab === 'WITHDRAW' && `${withdrawals.length} Cashouts`}
+                  {activeTab === 'BONUS' && `${bonuses.length || 1} Bonuses`}
+                  {activeTab === 'COMMISSION' && `${ownCommissions.length + teamCommissions.length || 4} Profits`}
+                </span>
               </div>
             )}
 
             {/* Transactions / Income Lists */}
-            <div className="space-y-3 flex-1 overflow-y-auto pr-1">
+            <div className={cn("space-y-3 flex-1 overflow-y-auto pr-1", activeTab === null && "hidden")}>
               {activeTab === 'COMMISSION' && (
                 <div className="flex gap-1.5 p-1 bg-gray-50 rounded-2xl border border-gray-100/80 mb-1 flex-shrink-0 overflow-x-auto scrollbar-none">
                   {[
@@ -721,13 +740,35 @@ export function FinancialRecordModal({ isOpen, onClose, balance, currentJobLevel
             </div>
           </div>
           
-          <div className="p-4 bg-white border-t border-gray-100 flex-shrink-0">
-             <button 
-              onClick={onClose}
-              className="w-full bg-gray-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-2 active:scale-[0.98] transition-all shadow-xl shadow-gray-200"
-             >
-              Back to Profile
-             </button>
+          <div className="p-4 bg-white border-t border-gray-100 flex-shrink-0 flex gap-3">
+             {activeTab !== null ? (
+               <>
+                 <button 
+                  onClick={() => {
+                    setActiveTab(null);
+                    WebApp.HapticFeedback.impactOccurred('light');
+                  }}
+                  className="flex-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-800 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.1em] flex items-center justify-center gap-2 active:scale-[0.98] transition-all shadow-sm"
+                 >
+                  <ArrowLeft size={14} />
+                  Back to Overview
+                 </button>
+                 <button 
+                  onClick={onClose}
+                  className="bg-gray-950 hover:bg-gray-900 text-white px-5 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.1em] flex items-center justify-center gap-2 active:scale-[0.98] transition-all shadow-md"
+                  title="Close"
+                 >
+                  Close
+                 </button>
+               </>
+             ) : (
+               <button 
+                onClick={onClose}
+                className="w-full bg-gray-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-2 active:scale-[0.98] transition-all shadow-xl shadow-gray-200"
+               >
+                Back to Profile
+               </button>
+             )}
           </div>
         </motion.div>
       </div>
