@@ -1202,6 +1202,9 @@ export default function App() {
           timestamp: serverTimestamp(),
           userId: getUserDocId(),
           method: details.bankName || 'Unknown',
+          bankName: details.bankName || '',
+          accountNumber: details.accountNumber || '',
+          accountName: details.accountName || '',
           wallet: wallet
         });
 

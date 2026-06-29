@@ -49,6 +49,12 @@ import { cn } from '../lib/utils';
 import WebApp from '@twa-dev/sdk';
 import { compressImage } from '../lib/imageCompressor';
 
+function cleanPhoneTo9Digits(phone: string): string {
+  if (!phone) return '';
+  const clean = phone.trim().replace(/\D/g, ''); // keep only digits
+  return clean.slice(-9); // get the last 9 digits
+}
+
 type AdminTab = 'DEPOSITS' | 'WITHDRAWALS' | 'USERS' | 'TASKS' | 'ADS' | 'PAYMENTS' | 'CODES';
 type UserFilter = 'ALL' | 'INTERN' | 'REGULAR';
 
@@ -77,6 +83,17 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
   const [codeError, setCodeError] = useState(false);
 
   const MASTER_CODE = "2026"; // System Activation Code
+
+  const getLinkedUser = (itemUserId: string) => {
+    if (!itemUserId) return undefined;
+    return users.find(u => {
+      if (u.id === itemUserId || u.phoneNumber === itemUserId) return true;
+      const uId9 = cleanPhoneTo9Digits(u.id || '');
+      const uPhone9 = cleanPhoneTo9Digits(u.phoneNumber || '');
+      const itemUser9 = cleanPhoneTo9Digits(itemUserId || '');
+      return (uId9 && uId9 === itemUser9) || (uPhone9 && uPhone9 === itemUser9);
+    });
+  };
 
   const [chats, setChats] = useState<any[]>([]);
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
@@ -1834,7 +1851,7 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                    {recharges
                      .filter(r => (r.status || 'pending').toLowerCase() === rechargeFilter)
                      .map(item => {
-                    const linkedUser = users.find(u => u.id === item.userId || u.phoneNumber === item.userId);
+                    const linkedUser = getLinkedUser(item.userId);
                     return (
                       <div key={item.id} className="bg-[#12182B]/60 border border-white/5 rounded-[32px] p-5 backdrop-blur-md">
                          {/* Associated Recharge User Information */}
@@ -2020,8 +2037,8 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-amber-500 italic">{item.bankName}</p>
-                          <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">{item.accountNumber}</p>
+                          <p className="text-[10px] font-black text-amber-500 italic">{item.bankName || item.method || getLinkedUser(item.userId)?.bankDetails?.bankName}</p>
+                          <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">{item.accountNumber || getLinkedUser(item.userId)?.bankDetails?.accountNumber}</p>
                         </div>
                       </div>
 
@@ -2045,21 +2062,21 @@ export function AdminCouncil({ onBack }: AdminCouncilProps) {
                         <div className="grid grid-cols-2 gap-3 text-xs leading-none">
                           <div>
                             <span className="text-[8px] text-gray-400 block uppercase font-mono mt-0.5 mb-1">Target Bank Name</span>
-                            <span className="font-bold text-white uppercase italic">{item.bankName || 'N/A'}</span>
+                            <span className="font-bold text-white uppercase italic">{item.bankName || item.method || getLinkedUser(item.userId)?.bankDetails?.bankName || 'N/A'}</span>
                           </div>
                           <div>
                             <span className="text-[8px] text-gray-400 block uppercase font-mono mt-0.5 mb-1">Target Account Number</span>
-                            <span className="font-mono text-amber-500 font-black">{item.accountNumber || 'N/A'}</span>
+                            <span className="font-mono text-amber-500 font-black">{item.accountNumber || getLinkedUser(item.userId)?.bankDetails?.accountNumber || 'N/A'}</span>
                           </div>
                           <div className="col-span-2">
                             <span className="text-[8px] text-gray-400 block uppercase font-mono mt-0.5 mb-1">Destination Holder Name</span>
-                            <span className="font-bold text-white uppercase italic">{item.accountName || 'N/A'}</span>
+                            <span className="font-bold text-white uppercase italic">{item.accountName || getLinkedUser(item.userId)?.bankDetails?.accountName || 'N/A'}</span>
                           </div>
                         </div>
                       </div>
 
                       {(() => {
-                        const linkedUser = users.find(u => u.id === item.userId || u.phoneNumber === item.userId);
+                        const linkedUser = getLinkedUser(item.userId);
                         return (
                           <div className="space-y-3 mb-4">
                             {/* Profile Details link */}
